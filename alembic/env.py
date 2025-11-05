@@ -16,11 +16,15 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Add the project root to sys.path
-sys.path.append(os.getcwd())
+# Ensure the src directory is on sys.path
+SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
 # Import the base metadata from your application's models
 from api_gateway.core.database import Base
+# Import models so they are registered on Base.metadata for autogenerate
+from services.authentication import models as _alembic_models
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
