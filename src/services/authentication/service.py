@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import or_
 from api_gateway.core.security import hash_password, verify_password, create_access_token
 from . import models, schemas
+from uuid import UUID
 
 def create_user(db: Session, user: schemas.UserCreate):
     """
@@ -55,3 +56,33 @@ def authenticate_user(db: Session, login: schemas.UserLogin) -> schemas.Token:
 
     token = create_access_token(str(user.id))
     return schemas.Token(access_token=token)
+
+
+def get_user_profile(db: Session, user_id: UUID):
+    profile = (
+        db.query(models.UserProfile)
+        .filter(models.UserProfile.user_id == user_id)
+        .first()
+    )
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    return profile
+
+
+def upsert_user_profile(db: Session, user_id: UUID, update: schemas.UserProfileUpdate):
+    profile = (
+        db.query(models.UserProfile)
+        .filter(models.UserProfile.user_id == user_id)
+        .first()
+    )
+    if not profile:
+        profile = models.UserProfile(user_id=user_id)
+        db.add(profile)
+
+    update_data = update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(profile, key, value)
+
+    db.commit()
+    db.refresh(profile)
+    return profile
