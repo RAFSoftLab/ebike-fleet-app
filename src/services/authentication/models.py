@@ -1,6 +1,7 @@
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, ForeignKey, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 import uuid
 from api_gateway.core.database import Base
 
@@ -25,3 +26,15 @@ class UserProfile(Base):
     address_line = Column(String, nullable=True)
 
     user = relationship("User", back_populates="profile")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    jti = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    revoked = Column(Boolean, nullable=False, default=False)
+    replaced_by = Column(String, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -2,9 +2,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from sqlalchemy import or_
-from api_gateway.core.security import hash_password, verify_password, create_access_token
+from api_gateway.core.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+)
 from . import models, schemas
 from uuid import UUID
+import secrets
+from datetime import datetime, timedelta, timezone
 
 def create_user(db: Session, user: schemas.UserCreate):
     """
@@ -41,7 +49,7 @@ def create_user(db: Session, user: schemas.UserCreate):
     return db_user
 
 
-def authenticate_user(db: Session, login: schemas.UserLogin) -> schemas.Token:
+def authenticate_user(db: Session, login: schemas.UserLogin):
     """
     Authenticate a user by username or email and return a JWT token on success.
     """
@@ -55,7 +63,80 @@ def authenticate_user(db: Session, login: schemas.UserLogin) -> schemas.Token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_access_token(str(user.id))
-    return schemas.Token(access_token=token)
+    return schemas.Token(access_token=token), user
+
+
+def _create_refresh_record_and_token(db: Session, user_id: UUID, days: int = 30):
+    now = datetime.now(timezone.utc)
+    jti = secrets.token_hex(16)
+    expires_at = now + timedelta(days=days)
+
+    record = models.RefreshToken(
+        jti=jti,
+        user_id=user_id,
+        revoked=False,
+        expires_at=expires_at,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    refresh_jwt = create_refresh_token(str(user_id), jti, expires_days=days)
+    max_age = int((expires_at - now).total_seconds())
+    return refresh_jwt, max_age
+
+
+def mint_refresh_token(db: Session, user_id: UUID):
+    return _create_refresh_record_and_token(db, user_id)
+
+
+def refresh_access(db: Session, refresh_token: str):
+    payload = decode_refresh_token(refresh_token)
+    jti = payload.get("jti")
+    sub = payload.get("sub")
+    if not jti or not sub:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    record = (
+        db.query(models.RefreshToken)
+        .filter(models.RefreshToken.jti == jti)
+        .first()
+    )
+    if not record or record.revoked:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked or not found")
+    now = datetime.now(timezone.utc)
+    if record.expires_at <= now:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+
+    # rotate: revoke old, create new
+    record.revoked = True
+    new_refresh_jwt, max_age = _create_refresh_record_and_token(db, UUID(sub))
+    # set linkage
+    new_payload = decode_refresh_token(new_refresh_jwt)
+    record.replaced_by = new_payload.get("jti")
+    db.commit()
+
+    access = create_access_token(sub)
+    return schemas.Token(access_token=access), new_refresh_jwt, max_age
+
+
+def logout(db: Session, refresh_token: str):
+    try:
+        payload = decode_refresh_token(refresh_token)
+    except HTTPException:
+        return
+    jti = payload.get("jti")
+    if not jti:
+        return
+    record = (
+        db.query(models.RefreshToken)
+        .filter(models.RefreshToken.jti == jti)
+        .first()
+    )
+    if not record:
+        return
+    record.revoked = True
+    db.commit()
 
 
 def get_user_profile(db: Session, user_id: UUID):

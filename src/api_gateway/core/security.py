@@ -45,6 +45,29 @@ def create_access_token(subject: str, expires_minutes: int = 60) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def create_refresh_token(subject: str, jti: str, expires_days: int = 30) -> str:
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(days=expires_days)
+    payload = {
+        "sub": subject,
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+        "jti": jti,
+        "typ": "refresh",
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_refresh_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        if payload.get("typ") != "refresh":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
