@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from api_gateway.core.config import settings
 from api_gateway.core.database import get_db
 from services.authentication.models import User
+from typing import Set
 
 SALT_LEN_BYTES = 16
 
@@ -83,4 +84,20 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
     user = db.query(User).filter(User.id == subject).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
+
+
+def _admin_emails() -> Set[str]:
+    if not settings.admin_emails_csv:
+        return set()
+    return {e.strip().lower() for e in settings.admin_emails_csv.split(",") if e.strip()}
+
+
+def is_admin(user: User) -> bool:
+    return user.email and user.email.lower() in _admin_emails()
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    if not is_admin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     return user

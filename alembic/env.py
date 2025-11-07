@@ -25,6 +25,7 @@ if SRC_DIR not in sys.path:
 from api_gateway.core.database import Base
 # Import models so they are registered on Base.metadata for autogenerate
 from services.authentication import models as _alembic_models
+from services.fleet import models as _alembic_fleet_models
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
