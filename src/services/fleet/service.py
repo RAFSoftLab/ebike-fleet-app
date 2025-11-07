@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from uuid import UUID
 from . import models, schemas
 from typing import List
+from services.authentication import models as auth_models
 
 
 # Bikes
@@ -68,6 +69,31 @@ def delete_bike(db: Session, bike_id: UUID):
     bike = get_bike(db, bike_id)
     db.delete(bike)
     db.commit()
+
+
+def assign_bike_to_profile(db: Session, bike_id: UUID, profile_id: UUID):
+    bike = get_bike(db, bike_id)
+    profile = (
+        db.query(auth_models.UserProfile)
+        .filter(auth_models.UserProfile.id == profile_id)
+        .first()
+    )
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    bike.assigned_profile_id = profile.id
+    bike.status = models.BikeStatus.assigned
+    db.commit()
+    db.refresh(bike)
+    return bike
+
+
+def unassign_bike_from_profile(db: Session, bike_id: UUID):
+    bike = get_bike(db, bike_id)
+    bike.assigned_profile_id = None
+    bike.status = models.BikeStatus.available
+    db.commit()
+    db.refresh(bike)
+    return bike
 
 
 # Batteries
