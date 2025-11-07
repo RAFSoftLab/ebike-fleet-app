@@ -115,6 +115,22 @@ def list_batteries(
     return service.list_batteries_for_profile(db, profile.id, skip=skip, limit=limit)
 
 
+@router.get("/me/bikes", response_model=list[schemas.BikeWithBatteriesRead])
+def list_my_bikes_with_batteries(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user = Depends(security.get_current_user),
+):
+    # admins can see everything; riders only their own
+    if security.is_admin(user):
+        return service.list_all_bikes_with_batteries(db, skip=skip, limit=limit)
+    profile = db.query(auth_models.UserProfile).filter(auth_models.UserProfile.user_id == user.id).first()
+    if not profile:
+        return []
+    return service.list_bikes_with_batteries_for_profile(db, profile.id, skip=skip, limit=limit)
+
+
 @router.get("/batteries/{battery_id}", response_model=schemas.BatteryRead)
 def get_battery(
     battery_id: UUID,

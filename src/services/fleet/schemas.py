@@ -70,3 +70,7 @@ class BatteryRead(BatteryBase):
         from_attributes = True
 
 
+class BikeWithBatteriesRead(BikeRead):
+    batteries: list[BatteryRead]
+
+

@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from uuid import UUID
@@ -172,6 +172,27 @@ def assign_battery_to_bike(db: Session, bike_id: UUID, battery_id: UUID):
     db.commit()
     db.refresh(battery)
     return battery
+
+
+def list_bikes_with_batteries_for_profile(db: Session, profile_id: UUID, skip: int = 0, limit: int = 100):
+    return (
+        db.query(models.Bike)
+        .options(joinedload(models.Bike.batteries))
+        .filter(models.Bike.assigned_profile_id == profile_id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
+def list_all_bikes_with_batteries(db: Session, skip: int = 0, limit: int = 100):
+    return (
+        db.query(models.Bike)
+        .options(joinedload(models.Bike.batteries))
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 def unassign_battery_from_bike(db: Session, bike_id: UUID, battery_id: UUID):
