@@ -8,3 +8,6 @@ python-jose[cryptography]
 pydantic-settings
 pydantic[email]
 alembic
+pytest
+pytest-cov
+httpx
