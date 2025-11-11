@@ -25,5 +25,21 @@ services:
     depends_on:
       - db
 
+  frontend:
+    image: node:20-alpine
+    container_name: ebike_frontend
+    working_dir: /app
+    environment:
+      - VITE_API_PROXY_TARGET=http://api:8000
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm ci || npm install && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
 volumes:
   postgres_data:

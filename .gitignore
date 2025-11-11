@@ -35,3 +35,9 @@ Docker/
 # Tests
 tests/__pycache__/
 .pytest_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+.npm-cache/
