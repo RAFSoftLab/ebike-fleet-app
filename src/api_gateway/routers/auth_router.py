@@ -52,12 +52,16 @@ def logout(response: Response, refresh_token: str | None = Cookie(default=None),
     return Response(status_code=204)
 
 
-@router.get("/me/profile", response_model=schemas.UserProfileRead)
+@router.get("/me/profile", response_model=schemas.UserProfileWithRoleRead)
 def read_my_profile(
     db: Session = Depends(get_db),
     current_user = Depends(security.get_current_user),
 ):
-    return service.get_user_profile(db, current_user.id)
+    profile = service.get_user_profile(db, current_user.id)
+    return {
+        **schemas.UserProfileRead.model_validate(profile).model_dump(),
+        "role": "admin" if security.is_admin(current_user) else "driver",
+    }
 
 
 @router.put("/me/profile", response_model=schemas.UserProfileRead)

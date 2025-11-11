@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, ConfigDict
 from uuid import UUID
-from typing import Optional
+from typing import Optional, Literal
 
 class UserCreate(BaseModel):
     username: str
@@ -43,3 +43,7 @@ class UserProfileRead(UserProfileBase):
     id: UUID
     user_id: UUID
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserProfileWithRoleRead(UserProfileRead):
+    role: Literal["admin", "driver"]

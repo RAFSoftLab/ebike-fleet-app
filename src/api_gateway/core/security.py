@@ -9,7 +9,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from api_gateway.core.config import settings
 from api_gateway.core.database import get_db
-from services.authentication.models import User
+from services.authentication.models import User, RoleEnum
 from typing import Set
 
 SALT_LEN_BYTES = 16
@@ -94,7 +94,13 @@ def _admin_emails() -> Set[str]:
 
 
 def is_admin(user: User) -> bool:
-    return user.email and user.email.lower() in _admin_emails()
+    # Prefer DB role if present, fallback to env-based email allowlist
+    try:
+        if getattr(user, "role", None) == RoleEnum.admin:
+            return True
+    except Exception:
+        pass
+    return bool(user.email and user.email.lower() in _admin_emails())
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:

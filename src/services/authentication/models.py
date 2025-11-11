@@ -1,9 +1,10 @@
-from sqlalchemy import Column, String, ForeignKey, Boolean, DateTime
+from sqlalchemy import Column, String, ForeignKey, Boolean, DateTime, Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 from api_gateway.core.database import Base
+import enum
 
 class User(Base):
     __tablename__ = "users"
@@ -13,6 +14,14 @@ class User(Base):
     email = Column(String, unique=True)
     password_hash = Column(String)
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete")
+
+
+class RoleEnum(enum.Enum):
+    admin = "admin"
+    driver = "driver"
+
+
+setattr(User, "role", Column(SAEnum(RoleEnum, name="role_enum"), nullable=False, default=RoleEnum.driver, server_default="driver"))  # type: ignore
 
 
 class UserProfile(Base):
