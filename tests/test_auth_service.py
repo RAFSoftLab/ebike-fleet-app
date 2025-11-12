@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from services.authentication import service as auth_service
 from services.authentication import schemas as auth_schemas
+from services.authentication import models as auth_models
 
 
 def test_create_user_and_duplicate(db_session: Session):
@@ -10,6 +11,13 @@ def test_create_user_and_duplicate(db_session: Session):
     created = auth_service.create_user(db_session, user_in)
     assert created.username == "u1"
     assert created.email == "u1@example.com"
+    # Profile should be created automatically
+    prof = (
+        db_session.query(auth_models.UserProfile)
+        .filter(auth_models.UserProfile.user_id == created.id)
+        .first()
+    )
+    assert prof is not None
 
     # Duplicate username
     with pytest.raises(Exception):

@@ -48,6 +48,12 @@ def create_user(db: Session, user: schemas.UserCreate):
     db_user = models.User(username=user.username, email=user.email, password_hash=hashed_pw, role=role)
     db.add(db_user)
     try:
+        # Obtain ID without finalizing the transaction
+        db.flush()
+        # Create an empty profile immediately for the new user
+        profile = models.UserProfile(user_id=db_user.id)
+        db.add(profile)
+        # Finalize both inserts atomically
         db.commit()
     except IntegrityError:
         db.rollback()

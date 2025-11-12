@@ -113,9 +113,13 @@ def create_user(db_session):
 
 
 @pytest.fixture()
-def admin_auth_header(create_user):
+def admin_auth_header(create_user, db_session):
     admin_email = "admin@example.com"
     user = create_user("admin", admin_email)
+    # Ensure this user has admin role for tests
+    from services.authentication.models import RoleEnum  # local import to avoid circulars
+    user.role = RoleEnum.admin  # type: ignore
+    db_session.commit()
     token = security.create_access_token(str(user.id))
     return {"Authorization": f"Bearer {token}"}
 

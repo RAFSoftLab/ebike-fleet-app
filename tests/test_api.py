@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi.testclient import TestClient
+from services.authentication import schemas as auth_schemas
 
 from services.fleet import schemas as fleet_schemas
 
@@ -24,4 +25,27 @@ def test_user_lists_only_their_bikes(client: TestClient, user_auth_header: dict)
     assert resp.status_code == 200
     assert resp.json() == []
 
+
+def test_profile_created_on_register_and_readable_via_api(client: TestClient):
+    # Register a new user
+    unique = uuid.uuid4().hex[:8]
+    payload = auth_schemas.UserCreate(
+        username=f"user_{unique}",
+        email=f"user_{unique}@example.com",
+        password="pw",
+    ).model_dump()
+    reg = client.post("/auth/register", json=payload)
+    assert reg.status_code == 200
+    user = reg.json()
+    # Login to get access token
+    login_payload = auth_schemas.UserLogin(identifier=payload["username"], password="pw").model_dump()
+    login = client.post("/auth/login", json=login_payload)
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    # Read profile; should exist automatically
+    prof_resp = client.get("/auth/me/profile", headers=headers)
+    assert prof_resp.status_code == 200
+    prof = prof_resp.json()
+    assert prof["user_id"] == user["id"]
 
