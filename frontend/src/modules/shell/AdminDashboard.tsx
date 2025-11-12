@@ -263,9 +263,10 @@ export function AdminDashboard() {
 			) : isError ? (
 				<p className="text-sm text-red-600">Failed to load data.</p>
 			) : (
-				<>
-					<section>
-						<h3 className="font-semibold mb-2">Create Driver</h3>
+				<div className="divide-y divide-gray-200">
+					<section className="py-4">
+						<h3 className="font-semibold mb-2">Drivers ({driversQuery.data?.length ?? 0})</h3>
+						<h4 className="font-medium mb-2 text-sm">Create Driver</h4>
 						<div className="border rounded-md p-3 mb-3">
 							<form
 								onSubmit={(e) => {
@@ -466,7 +467,7 @@ export function AdminDashboard() {
 							) : null}
 						</div>
 					</section>
-					<section>
+					<section className="py-4">
 						<h3 className="font-semibold mb-2">Bikes ({bikesQuery.data?.length ?? 0})</h3>
 						<div className="border rounded-md p-3 mb-3">
 							<h4 className="font-medium mb-2 text-sm">Create Bike</h4>
@@ -658,7 +659,7 @@ export function AdminDashboard() {
 						</div>
 					</section>
 
-					<section>
+					<section className="py-4">
 						<h3 className="font-semibold mb-2">Batteries ({batteriesQuery.data?.length ?? 0})</h3>
 						<div className="border rounded-md p-3 mb-3">
 							<h4 className="font-medium mb-2 text-sm">Create Battery</h4>
@@ -865,7 +866,7 @@ export function AdminDashboard() {
 					</section>
 
 					
-				</>
+				</div>
 			)}
 		</div>
 	);
