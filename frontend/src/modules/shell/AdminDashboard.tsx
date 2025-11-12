@@ -58,6 +58,12 @@ export function AdminDashboard() {
 	const [editCapacityWh, setEditCapacityWh] = React.useState<number | "">("");
 	const [editChargeLevel, setEditChargeLevel] = React.useState<number | "">("");
 	const [editAssignedBikeId, setEditAssignedBikeId] = React.useState<string | "">("");
+	// Manage bike-driver assignment inline edit state
+	const [editingBikeId, setEditingBikeId] = React.useState<string | null>(null);
+	const [editAssignedProfileId, setEditAssignedProfileId] = React.useState<string | "">("");
+	// Manage driver-side assignment
+	const [editingDriverId, setEditingDriverId] = React.useState<string | null>(null);
+	const [assignBikeIdForDriver, setAssignBikeIdForDriver] = React.useState<string | "">("");
 
 	// Fetch available bike statuses from API
 	const statusesQuery = useQuery<string[]>({
@@ -184,6 +190,39 @@ export function AdminDashboard() {
 			setEditingBatteryId(null);
 			queryClient.invalidateQueries({ queryKey: ["batteries"] });
 			queryClient.invalidateQueries({ queryKey: ["bikes"] });
+		},
+	});
+
+	const manageBikeAssignmentMutation = useMutation({
+		mutationFn: async (args: { bike: Bike; assignedProfileId: string | "" }) => {
+			const { bike, assignedProfileId } = args;
+			const currentAssigned = bike.assigned_profile_id ?? "";
+			if ((assignedProfileId || "") === (currentAssigned || "")) {
+				return;
+			}
+			if (assignedProfileId === "") {
+				await api.post(`/fleet/bikes/${bike.id}/unassign-profile`);
+			} else {
+				await api.post(`/fleet/bikes/${bike.id}/assign-profile/${assignedProfileId}`);
+			}
+		},
+		onSuccess: () => {
+			setEditingBikeId(null);
+			queryClient.invalidateQueries({ queryKey: ["bikes"] });
+			queryClient.invalidateQueries({ queryKey: ["drivers"] });
+		},
+	});
+
+	const assignBikeToDriverMutation = useMutation({
+		mutationFn: async (args: { bikeId: string; profileId: string }) => {
+			const { bikeId, profileId } = args;
+			await api.post(`/fleet/bikes/${bikeId}/assign-profile/${profileId}`);
+		},
+		onSuccess: () => {
+			setEditingDriverId(null);
+			setAssignBikeIdForDriver("");
+			queryClient.invalidateQueries({ queryKey: ["bikes"] });
+			queryClient.invalidateQueries({ queryKey: ["drivers"] });
 		},
 	});
 
@@ -342,6 +381,18 @@ export function AdminDashboard() {
 										<div className="flex items-center gap-3">
 											<span className="font-medium">{displayName}</span>
 											<span className="text-gray-600">(role: {d.role})</span>
+											{editingDriverId !== d.id ? (
+												<button
+													type="button"
+													onClick={() => {
+														setEditingDriverId(d.id);
+														setAssignBikeIdForDriver("");
+													}}
+													className="ml-auto bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded"
+												>
+													Manage
+												</button>
+											) : null}
 										</div>
 										<div className="mt-1 text-xs text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
 											{d.phone_number ? <span>Phone: {d.phone_number}</span> : null}
@@ -349,6 +400,64 @@ export function AdminDashboard() {
 											<span>Assigned bike: {assignedCount > 0 ? "Yes" : "No"}</span>
 											{!hasName ? <span className="italic">No profile name set</span> : null}
 										</div>
+										{editingDriverId === d.id ? (
+											<div className="mt-2">
+												<form
+													onSubmit={(e) => {
+														e.preventDefault();
+														if (!assignBikeIdForDriver) return;
+														assignBikeToDriverMutation.mutate({
+															bikeId: assignBikeIdForDriver,
+															profileId: d.id,
+														});
+													}}
+													className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end"
+												>
+													<label className="flex flex-col gap-1 md:col-span-3">
+														<span className="text-xs text-gray-600">Assign an unassigned bike</span>
+														<select
+															value={assignBikeIdForDriver}
+															onChange={(e) => setAssignBikeIdForDriver(e.target.value)}
+															className="border rounded px-2 py-1 text-sm bg-white"
+														>
+															<option value="">Select bike…</option>
+															{(bikesQuery.data ?? [])
+																.filter((bike) => !bike.assigned_profile_id)
+																.map((bike) => (
+																	<option key={bike.id} value={bike.id}>
+																		{bike.serial_number}
+																	</option>
+																))}
+														</select>
+													</label>
+													<div className="md:col-span-2 flex gap-2">
+														<button
+															type="submit"
+															disabled={assignBikeToDriverMutation.isPending || !assignBikeIdForDriver}
+															className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-3 py-2 rounded"
+														>
+															{assignBikeToDriverMutation.isPending ? "Assigning…" : "Assign"}
+														</button>
+														<button
+															type="button"
+															onClick={() => {
+																setEditingDriverId(null);
+																setAssignBikeIdForDriver("");
+															}}
+															className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm px-3 py-2 rounded"
+														>
+															Close
+														</button>
+													</div>
+													{assignBikeToDriverMutation.isError ? (
+														<div className="md:col-span-6 text-xs text-red-600">Failed to assign bike.</div>
+													) : null}
+													{assignBikeToDriverMutation.isSuccess ? (
+														<div className="md:col-span-6 text-xs text-green-700">Bike assigned.</div>
+													) : null}
+												</form>
+											</div>
+										) : null}
 									</div>
 								);
 							})}
@@ -461,9 +570,86 @@ export function AdminDashboard() {
 									{typeof b.mileage === "number" ? (
 										<span className="text-gray-600">• Mileage: {b.mileage}</span>
 									) : null}
-									<span className="text-gray-600">
-										• Assigned: {b.assigned_profile_id ? "Yes" : "No"}
-									</span>
+									{b.assigned_profile_id ? (
+										<span className="text-gray-600">
+											• Driver:{" "}
+											{(() => {
+												const d = (driversQuery.data ?? []).find((x) => x.id === b.assigned_profile_id);
+												if (!d) return "Unknown";
+												const displayName = `${d.first_name ?? ""} ${d.last_name ?? ""}`.trim() || "Unnamed driver";
+												return displayName;
+											})()}
+										</span>
+									) : (
+										<span className="text-gray-600">• Unassigned</span>
+									)}
+									{editingBikeId !== b.id ? (
+										<button
+											type="button"
+											onClick={() => {
+												setEditingBikeId(b.id);
+												setEditAssignedProfileId(b.assigned_profile_id ?? "");
+											}}
+											className="ml-auto bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded"
+										>
+											Manage
+										</button>
+									) : null}
+									{editingBikeId === b.id ? (
+										<div className="w-full mt-2">
+											<form
+												onSubmit={(e) => {
+													e.preventDefault();
+													manageBikeAssignmentMutation.mutate({
+														bike: b,
+														assignedProfileId: editAssignedProfileId,
+													});
+												}}
+												className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end"
+											>
+												<label className="flex flex-col gap-1 md:col-span-3">
+													<span className="text-xs text-gray-600">Assign to driver</span>
+													<select
+														value={editAssignedProfileId}
+														onChange={(e) => setEditAssignedProfileId(e.target.value)}
+														className="border rounded px-2 py-1 text-sm bg-white"
+													>
+														<option value="">Unassigned</option>
+														{(driversQuery.data ?? []).map((driver) => {
+															const name = `${driver.first_name ?? ""} ${driver.last_name ?? ""}`.trim() || "Unnamed driver";
+															return (
+																<option key={driver.id} value={driver.id}>
+																	{name}
+																</option>
+															);
+														})}
+													</select>
+												</label>
+												<div className="md:col-span-2 flex gap-2">
+													<button
+														type="submit"
+														disabled={manageBikeAssignmentMutation.isPending}
+														className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-3 py-2 rounded"
+													>
+														{manageBikeAssignmentMutation.isPending ? "Saving…" : "Save"}
+													</button>
+													<button
+														type="button"
+														onClick={() => setEditingBikeId(null)}
+														className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm px-3 py-2 rounded"
+													>
+														Close
+													</button>
+												</div>
+												{manageBikeAssignmentMutation.isError ? (
+													<div className="md:col-span-6 text-xs text-red-600">Failed to save changes.</div>
+												) : null}
+												{manageBikeAssignmentMutation.isSuccess ? (
+													<div className="md:col-span-6 text-xs text-green-700">Changes saved.</div>
+												) : null}
+											</form>
+										</div>
+									) : null}
 								</div>
 							))}
 							{(bikesQuery.data ?? []).length === 0 ? (
@@ -567,22 +753,20 @@ export function AdminDashboard() {
 												) : null;
 										  })()
 										: null}
-									<button
-										type="button"
-										onClick={() => {
-											if (editingBatteryId === b.id) {
-												setEditingBatteryId(null);
-												return;
-											}
-											setEditingBatteryId(b.id);
-											setEditCapacityWh(typeof b.capacity_wh === "number" ? b.capacity_wh : "");
-											setEditChargeLevel(typeof b.charge_level === "number" ? b.charge_level : "");
-											setEditAssignedBikeId(b.assigned_bike_id ?? "");
-										}}
-										className="ml-auto bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded"
-									>
-										{editingBatteryId === b.id ? "Close" : "Manage"}
-									</button>
+									{editingBatteryId !== b.id ? (
+										<button
+											type="button"
+											onClick={() => {
+												setEditingBatteryId(b.id);
+												setEditCapacityWh(typeof b.capacity_wh === "number" ? b.capacity_wh : "");
+												setEditChargeLevel(typeof b.charge_level === "number" ? b.charge_level : "");
+												setEditAssignedBikeId(b.assigned_bike_id ?? "");
+											}}
+											className="ml-auto bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded"
+										>
+											Manage
+										</button>
+									) : null}
 									{editingBatteryId === b.id ? (
 										<div className="w-full mt-2">
 											<form
@@ -656,7 +840,7 @@ export function AdminDashboard() {
 														onClick={() => setEditingBatteryId(null)}
 														className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm px-3 py-2 rounded"
 													>
-														Cancel
+														Close
 													</button>
 												</div>
 												{manageBatteryMutation.isError ? (
