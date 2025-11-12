@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from services.authentication import schemas, service
 from api_gateway.core.database import get_db
 from api_gateway.core import security
+from uuid import UUID
 
 router = APIRouter()
 
@@ -60,7 +61,7 @@ def read_my_profile(
     profile = service.get_user_profile(db, current_user.id)
     return {
         **schemas.UserProfileRead.model_validate(profile).model_dump(),
-        "role": "admin" if security.is_admin(current_user) else "driver",
+        "role": getattr(getattr(current_user, "role", None), "value", "driver"),
     }
 
 
@@ -71,3 +72,37 @@ def upsert_my_profile(
     current_user = Depends(security.get_current_user),
 ):
     return service.upsert_user_profile(db, current_user.id, profile)
+
+@router.post("/bootstrap-admin", response_model=schemas.UserRead)
+def bootstrap_admin(
+    db: Session = Depends(get_db),
+    current_user = Depends(security.get_current_user),
+):
+    """
+    Promote the current authenticated user to admin IF AND ONLY IF
+    there are no admins in the system yet. Otherwise return 403.
+    """
+    user = service.bootstrap_admin(db, current_user.id)
+    return schemas.UserRead.model_validate(user)
+
+
+@router.put("/users/{user_id}/role", response_model=schemas.UserRead)
+def set_user_role_by_id(
+    user_id: UUID,
+    update: schemas.RoleUpdate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    user = service.set_user_role_by_id(db, user_id, update.role)
+    return schemas.UserRead.model_validate(user)
+
+
+@router.put("/users/by-email/{email}/role", response_model=schemas.UserRead)
+def set_user_role_by_email(
+    email: str,
+    update: schemas.RoleUpdate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    user = service.set_user_role_by_email(db, email, update.role)
+    return schemas.UserRead.model_validate(user)

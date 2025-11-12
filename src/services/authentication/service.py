@@ -13,6 +13,7 @@ from . import models, schemas
 from uuid import UUID
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 def create_user(db: Session, user: schemas.UserCreate):
     """
@@ -38,7 +39,13 @@ def create_user(db: Session, user: schemas.UserCreate):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
     hashed_pw = hash_password(user.password)
-    db_user = models.User(username=user.username, email=user.email, password_hash=hashed_pw)
+    # If there are no admins yet, make this user an admin to bootstrap the system
+    try:
+        has_admin = db.query(models.User).filter(models.User.role == models.RoleEnum.admin).count() > 0
+    except Exception:
+        has_admin = False
+    role = models.RoleEnum.admin if not has_admin else models.RoleEnum.driver
+    db_user = models.User(username=user.username, email=user.email, password_hash=hashed_pw, role=role)
     db.add(db_user)
     try:
         db.commit()
@@ -167,3 +174,43 @@ def upsert_user_profile(db: Session, user_id: UUID, update: schemas.UserProfileU
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def set_user_role_by_id(db: Session, user_id: UUID, role: str):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    try:
+        user.role = models.RoleEnum(role)  # type: ignore
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def set_user_role_by_email(db: Session, email: str, role: str):
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    try:
+        user.role = models.RoleEnum(role)  # type: ignore
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def bootstrap_admin(db: Session, user_id: UUID):
+    # Only allow bootstrap if there are no admins in the system yet
+    has_admin = db.query(models.User).filter(models.User.role == models.RoleEnum.admin).count() > 0
+    if has_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin already exists")
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user.role = models.RoleEnum.admin
+    db.commit()
+    db.refresh(user)
+    return user

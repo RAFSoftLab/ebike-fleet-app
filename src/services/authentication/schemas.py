@@ -47,3 +47,7 @@ class UserProfileRead(UserProfileBase):
 
 class UserProfileWithRoleRead(UserProfileRead):
     role: Literal["admin", "driver"]
+
+
+class RoleUpdate(BaseModel):
+    role: Literal["admin", "driver"]

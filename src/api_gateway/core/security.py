@@ -94,13 +94,10 @@ def _admin_emails() -> Set[str]:
 
 
 def is_admin(user: User) -> bool:
-    # Prefer DB role if present, fallback to env-based email allowlist
     try:
-        if getattr(user, "role", None) == RoleEnum.admin:
-            return True
+        return getattr(user, "role", None) == RoleEnum.admin
     except Exception:
-        pass
-    return bool(user.email and user.email.lower() in _admin_emails())
+        return False
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
