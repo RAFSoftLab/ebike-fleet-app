@@ -8,6 +8,8 @@ type Bike = {
 	make?: string;
 	model?: string;
 	status?: string;
+	mileage?: number;
+	assigned_profile_id?: string | null;
 };
 type Battery = {
 	id: string;
@@ -195,9 +197,14 @@ export function AdminDashboard() {
 						<div className="border rounded-md divide-y">
 							{(bikesQuery.data ?? []).map((b) => (
 								<div key={b.id} className="px-3 py-2 text-sm flex items-center gap-3">
-									<span className="font-mono text-xs text-gray-500">{b.id}</span>
 									<span className="font-medium">{b.serial_number}</span>
 									{b.status ? <span className="text-gray-600">({b.status})</span> : null}
+									{typeof b.mileage === "number" ? (
+										<span className="text-gray-600">• Mileage: {b.mileage}</span>
+									) : null}
+									<span className="text-gray-600">
+										• Assigned: {b.assigned_profile_id ? "Yes" : "No"}
+									</span>
 								</div>
 							))}
 							{(bikesQuery.data ?? []).length === 0 ? (

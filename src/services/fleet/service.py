@@ -11,6 +11,7 @@ from services.authentication import models as auth_models
 def create_bike(db: Session, data: schemas.BikeCreate):
     bike = models.Bike(
         serial_number=data.serial_number,
+        serial_number_ci=data.serial_number.lower(),
         make=data.make,
         model=data.model,
         status=models.BikeStatus[data.status] if isinstance(data.status, str) else data.status,

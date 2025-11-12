@@ -19,6 +19,8 @@ class Bike(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     serial_number = Column(String, unique=True, nullable=False)
+    # Lowercased copy of serial_number to enforce case-insensitive uniqueness
+    serial_number_ci = Column(String, unique=True, nullable=False, index=True)
     make = Column(String, nullable=True)
     model = Column(String, nullable=True)
     status = Column(SAEnum(BikeStatus, name="bike_status"), nullable=False, default=BikeStatus.available)
