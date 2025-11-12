@@ -7,6 +7,7 @@ from services.fleet import schemas, service
 from services.fleet import models as fleet_models
 from services.authentication import models as auth_models
 from services.authentication import schemas as auth_schemas
+from services.authentication import service as auth_service
 
 router = APIRouter()
 
@@ -22,6 +23,35 @@ def list_drivers(
         payload = {**base, "role": getattr(getattr(user, "role", None), "value", "driver")}
         results.append(auth_schemas.UserProfileWithRoleRead.model_validate(payload))
     return results
+
+@router.post("/drivers", response_model=auth_schemas.UserProfileWithRoleRead, status_code=status.HTTP_201_CREATED)
+def create_driver(
+    payload: auth_schemas.AdminCreateDriver,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """
+    Admin-only endpoint to create a new driver user and optionally set their profile details.
+    """
+    # Create the user
+    user = auth_service.create_user(
+        db,
+        auth_schemas.UserCreate(username=payload.username, email=payload.email, password=payload.password),
+    )
+    # Ensure role is driver explicitly
+    if getattr(user, "role", None) != auth_models.RoleEnum.driver:
+        user = auth_service.set_user_role_by_id(db, user.id, "driver")
+    # Upsert profile details if provided
+    profile_update = auth_schemas.UserProfileUpdate(
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        phone_number=payload.phone_number,
+        address_line=payload.address_line,
+    )
+    profile = auth_service.upsert_user_profile(db, user.id, profile_update)
+    # Return the profile with the role
+    resp = {**auth_schemas.UserProfileRead.model_validate(profile).model_dump(), "role": "driver"}
+    return auth_schemas.UserProfileWithRoleRead.model_validate(resp)
 
 @router.get("/bike-statuses", response_model=list[str])
 def bike_statuses(_user = Depends(security.get_current_user)):

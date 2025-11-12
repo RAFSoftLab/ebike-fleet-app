@@ -7,6 +7,16 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+class AdminCreateDriver(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    # Set profile fields, at creation
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    address_line: Optional[str] = None
+
 class UserRead(BaseModel):
     id: UUID
     username: str
