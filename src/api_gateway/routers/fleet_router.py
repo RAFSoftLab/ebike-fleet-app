@@ -6,8 +6,22 @@ from api_gateway.core import security
 from services.fleet import schemas, service
 from services.fleet import models as fleet_models
 from services.authentication import models as auth_models
+from services.authentication import schemas as auth_schemas
 
 router = APIRouter()
+
+@router.get("/drivers", response_model=list[auth_schemas.UserProfileWithRoleRead])
+def list_drivers(
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    rows = service.list_driver_profiles(db)
+    results: list[auth_schemas.UserProfileWithRoleRead] = []
+    for user, profile in rows:
+        base = auth_schemas.UserProfileRead.model_validate(profile).model_dump()
+        payload = {**base, "role": getattr(getattr(user, "role", None), "value", "driver")}
+        results.append(auth_schemas.UserProfileWithRoleRead.model_validate(payload))
+    return results
 
 @router.get("/bike-statuses", response_model=list[str])
 def bike_statuses(_user = Depends(security.get_current_user)):

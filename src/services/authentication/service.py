@@ -13,7 +13,6 @@ from . import models, schemas
 from uuid import UUID
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 def create_user(db: Session, user: schemas.UserCreate):
     """

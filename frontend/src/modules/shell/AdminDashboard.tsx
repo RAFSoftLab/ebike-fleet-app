@@ -17,6 +17,15 @@ type Battery = {
 	charge_level?: number;
 	status?: string;
 };
+type DriverProfile = {
+	id: string;
+	user_id: string;
+	first_name?: string;
+	last_name?: string;
+	phone_number?: string;
+	address_line?: string;
+	role: "admin" | "driver";
+};
 
 export function AdminDashboard() {
 	const queryClient = useQueryClient();
@@ -62,6 +71,14 @@ export function AdminDashboard() {
 		},
 	});
 
+	const driversQuery = useQuery<DriverProfile[]>({
+		queryKey: ["drivers"],
+		queryFn: async () => {
+			const resp = await api.get("/fleet/drivers");
+			return resp.data as DriverProfile[];
+		},
+	});
+
 	const createBikeMutation = useMutation({
 		mutationFn: async () => {
 			const payload: any = {
@@ -86,8 +103,8 @@ export function AdminDashboard() {
 		},
 	});
 
-	const isLoading = bikesQuery.isLoading || batteriesQuery.isLoading;
-	const isError = bikesQuery.isError || batteriesQuery.isError;
+	const isLoading = bikesQuery.isLoading || batteriesQuery.isLoading || driversQuery.isLoading;
+	const isError = bikesQuery.isError || batteriesQuery.isError || driversQuery.isError;
 
 	return (
 		<div className="space-y-6">
@@ -227,6 +244,34 @@ export function AdminDashboard() {
 							))}
 							{(batteriesQuery.data ?? []).length === 0 ? (
 								<div className="px-3 py-2 text-sm text-gray-600">No batteries.</div>
+							) : null}
+						</div>
+					</section>
+
+					<section>
+						<h3 className="font-semibold mb-2">Drivers ({driversQuery.data?.length ?? 0})</h3>
+						<div className="border rounded-md divide-y">
+							{(driversQuery.data ?? []).map((d) => {
+								const hasName = (d.first_name ?? "").trim() || (d.last_name ?? "").trim();
+								const displayName = `${d.first_name ?? ""} ${d.last_name ?? ""}`.trim() || "Unnamed driver";
+								return (
+									<div key={d.id} className="px-3 py-2 text-sm">
+										<div className="flex items-center gap-3">
+											<span className="font-medium">{displayName}</span>
+											<span className="text-gray-600">(role: {d.role})</span>
+										</div>
+										<div className="mt-1 text-xs text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
+											<span>Profile ID: <span className="font-mono">{d.id}</span></span>
+											<span>User ID: <span className="font-mono">{d.user_id}</span></span>
+											{d.phone_number ? <span>Phone: {d.phone_number}</span> : null}
+											{d.address_line ? <span>Address: {d.address_line}</span> : null}
+											{!hasName ? <span className="italic">No profile name set</span> : null}
+										</div>
+									</div>
+								);
+							})}
+							{(driversQuery.data ?? []).length === 0 ? (
+								<div className="px-3 py-2 text-sm text-gray-600">No drivers.</div>
 							) : null}
 						</div>
 					</section>

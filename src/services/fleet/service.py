@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from uuid import UUID
 from . import models, schemas
-from typing import List
+from typing import List, Tuple
 from services.authentication import models as auth_models
 
 
@@ -207,4 +207,17 @@ def unassign_battery_from_bike(db: Session, bike_id: UUID, battery_id: UUID):
     db.refresh(battery)
     return battery
 
+
+def list_driver_profiles(db: Session) -> List[Tuple[auth_models.User, auth_models.UserProfile]]:
+    """
+    Return (User, UserProfile) rows for all users with the driver role
+    that have an associated profile.
+    """
+    rows: List[Tuple[auth_models.User, auth_models.UserProfile]] = (
+        db.query(auth_models.User, auth_models.UserProfile)
+        .join(auth_models.UserProfile, auth_models.UserProfile.user_id == auth_models.User.id)
+        .filter(auth_models.User.role == auth_models.RoleEnum.driver)
+        .all()
+    )
+    return rows
 
