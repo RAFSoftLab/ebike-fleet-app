@@ -1,9 +1,21 @@
+import React from "react";
+import { useCurrentUser } from "../users/useCurrentUser";
+import { AdminDashboard } from "./AdminDashboard";
+import { DriverDashboard } from "./DriverDashboard";
+
 export function Dashboard() {
-  return (
-    <div className="space-y-2">
-      <h2 className="text-lg font-semibold">Dashboard</h2>
-      <p className="text-sm text-gray-600">Welcome! Use the nav to manage your fleet.</p>
-    </div>
-  );
+	const { data: me, isLoading, isError } = useCurrentUser();
+
+	if (isLoading) {
+		return <p className="text-sm text-gray-600">Loading…</p>;
+	}
+	if (isError || !me) {
+		return <p className="text-sm text-red-600">Unable to load user.</p>;
+	}
+
+	if (me.role === "admin") {
+		return <AdminDashboard />;
+	}
+	return <DriverDashboard />;
 }
 
