@@ -4,9 +4,14 @@ from uuid import UUID
 from api_gateway.core.database import get_db
 from api_gateway.core import security
 from services.fleet import schemas, service
+from services.fleet import models as fleet_models
 from services.authentication import models as auth_models
 
 router = APIRouter()
+
+@router.get("/bike-statuses", response_model=list[str])
+def bike_statuses(_user = Depends(security.get_current_user)):
+    return [s.value for s in fleet_models.BikeStatus]
 
 
 # Bikes
