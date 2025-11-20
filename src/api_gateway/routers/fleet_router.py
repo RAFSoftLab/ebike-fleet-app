@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, Response, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
+from datetime import date
+from typing import Optional
 from api_gateway.core.database import get_db
 from api_gateway.core import security
 from services.fleet import schemas, service
@@ -227,5 +229,90 @@ def unassign_battery(
     _admin = Depends(security.require_admin),
 ):
     return service.unassign_battery_from_bike(db, bike_id, battery_id)
+
+
+# Rentals
+@router.post("/rentals", response_model=schemas.RentalRead, status_code=status.HTTP_201_CREATED)
+def create_rental(
+    rental: schemas.RentalCreate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Create a new rental. Admin only."""
+    return service.create_rental(db, rental)
+
+
+@router.get("/rentals", response_model=list[schemas.RentalRead])
+def list_rentals(
+    bike_id: Optional[UUID] = Query(None, description="Filter by bike ID"),
+    profile_id: Optional[UUID] = Query(None, description="Filter by driver profile ID"),
+    start_date: Optional[date] = Query(None, description="Filter rentals that overlap with this date or later"),
+    end_date: Optional[date] = Query(None, description="Filter rentals that overlap with this date or earlier"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user = Depends(security.get_current_user),
+):
+    """
+    List rentals with optional filters.
+    Admins can see all rentals. Drivers can only see their own rentals.
+    """
+    # Drivers can only see their own rentals
+    if not security.is_admin(user):
+        profile = db.query(auth_models.UserProfile).filter(auth_models.UserProfile.user_id == user.id).first()
+        if not profile:
+            return []
+        # Override profile_id filter for drivers
+        profile_id = profile.id
+    
+    return service.list_rentals(
+        db,
+        bike_id=bike_id,
+        profile_id=profile_id,
+        start_date=start_date,
+        end_date=end_date,
+        skip=skip,
+        limit=limit
+    )
+
+
+@router.get("/rentals/{rental_id}", response_model=schemas.RentalRead)
+def get_rental(
+    rental_id: UUID,
+    db: Session = Depends(get_db),
+    user = Depends(security.get_current_user),
+):
+    """Get a rental by ID. Admins can see any rental. Drivers can only see their own."""
+    rental = service.get_rental(db, rental_id)
+    
+    # Drivers can only see their own rentals
+    if not security.is_admin(user):
+        profile = db.query(auth_models.UserProfile).filter(auth_models.UserProfile.user_id == user.id).first()
+        if not profile or rental.profile_id != profile.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this rental")
+    
+    return rental
+
+
+@router.put("/rentals/{rental_id}", response_model=schemas.RentalRead)
+def update_rental(
+    rental_id: UUID,
+    update: schemas.RentalUpdate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Update a rental. Admin only."""
+    return service.update_rental(db, rental_id, update)
+
+
+@router.delete("/rentals/{rental_id}", status_code=204)
+def delete_rental(
+    rental_id: UUID,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Delete a rental. Admin only."""
+    service.delete_rental(db, rental_id)
+    return Response(status_code=204)
 
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum as SAEnum, Date, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -77,5 +77,32 @@ class Battery(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     bike = relationship("Bike", backref="batteries", foreign_keys=[assigned_bike_id])
+
+
+class Rental(Base):
+    __tablename__ = "rentals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    bike_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bikes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    profile_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    bike = relationship("Bike", backref="rentals", foreign_keys=[bike_id])
+    profile = relationship("UserProfile", backref="rentals", foreign_keys=[profile_id])
 
 

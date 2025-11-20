@@ -1,7 +1,7 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, date
 
 
 class BikeBase(BaseModel):
@@ -69,4 +69,48 @@ class BatteryRead(BatteryBase):
 class BikeWithBatteriesRead(BikeRead):
     batteries: list[BatteryRead]
 
+
+class RentalBase(BaseModel):
+    bike_id: UUID
+    profile_id: UUID
+    start_date: date
+    end_date: Optional[date] = None
+    notes: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_dates(self):
+        if self.end_date is not None and self.end_date < self.start_date:
+            raise ValueError('end_date must be after start_date')
+        return self
+
+
+class RentalCreate(RentalBase):
+    pass
+
+
+class RentalUpdate(BaseModel):
+    bike_id: Optional[UUID] = None
+    profile_id: Optional[UUID] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    notes: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_dates(self):
+        if self.end_date is not None and self.start_date is not None:
+            if self.end_date < self.start_date:
+                raise ValueError('end_date must be after start_date')
+        return self
+
+
+class RentalRead(RentalBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RentalWithDetailsRead(RentalRead):
+    bike: BikeRead
+    profile: Optional[dict] = None
 

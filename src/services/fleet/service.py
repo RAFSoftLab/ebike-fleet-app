@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_, or_
 from fastapi import HTTPException, status
 from uuid import UUID
 from . import models, schemas
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+from datetime import date
 from services.authentication import models as auth_models
 
 
@@ -220,4 +222,184 @@ def list_driver_profiles(db: Session) -> List[Tuple[auth_models.User, auth_model
         .all()
     )
     return rows
+
+
+# Rentals
+def check_rental_conflicts(
+    db: Session,
+    bike_id: UUID,
+    start_date: date,
+    end_date: Optional[date],
+    exclude_rental_id: Optional[UUID] = None
+) -> bool:
+    """
+    Check if there are any overlapping rentals for the given bike and date range.
+    Returns True if conflicts exist, False otherwise.
+    
+    Two rentals overlap if:
+    - Rental A starts before Rental B ends AND Rental A ends after Rental B starts
+    - For rentals without end_date, they are considered ongoing and overlap with any future date
+    """
+    query = db.query(models.Rental).filter(
+        models.Rental.bike_id == bike_id
+    )
+    
+    if exclude_rental_id:
+        query = query.filter(models.Rental.id != exclude_rental_id)
+    
+    # Check for overlaps
+    # Case 1: New rental has end_date
+    if end_date:
+        # Overlap conditions:
+        # - Existing rental starts before new rental ends AND
+        #   (existing rental has no end_date OR existing rental ends after new rental starts)
+        conflicts = query.filter(
+            and_(
+                models.Rental.start_date <= end_date,
+                or_(
+                    models.Rental.end_date.is_(None),
+                    models.Rental.end_date >= start_date
+                )
+            )
+        ).first()
+    else:
+        # Case 2: New rental has no end_date (ongoing)
+        # Overlaps with any rental that hasn't ended yet or has no end_date
+        conflicts = query.filter(
+            or_(
+                models.Rental.end_date.is_(None),
+                models.Rental.end_date >= start_date
+            )
+        ).first()
+    
+    return conflicts is not None
+
+
+def create_rental(db: Session, data: schemas.RentalCreate):
+    """Create a new rental, checking for conflicts."""
+    # Verify bike exists
+    bike = get_bike(db, data.bike_id)
+    
+    # Verify profile exists
+    profile = (
+        db.query(auth_models.UserProfile)
+        .filter(auth_models.UserProfile.id == data.profile_id)
+        .first()
+    )
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    
+    # Check for conflicts
+    if check_rental_conflicts(db, data.bike_id, data.start_date, data.end_date):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bike is already rented for the specified date range"
+        )
+    
+    rental = models.Rental(
+        bike_id=data.bike_id,
+        profile_id=data.profile_id,
+        start_date=data.start_date,
+        end_date=data.end_date,
+        notes=data.notes,
+    )
+    db.add(rental)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Error creating rental")
+    db.refresh(rental)
+    return rental
+
+
+def list_rentals(
+    db: Session,
+    bike_id: Optional[UUID] = None,
+    profile_id: Optional[UUID] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    skip: int = 0,
+    limit: int = 100
+):
+    """List rentals with optional filters."""
+    query = db.query(models.Rental)
+    
+    if bike_id:
+        query = query.filter(models.Rental.bike_id == bike_id)
+    
+    if profile_id:
+        query = query.filter(models.Rental.profile_id == profile_id)
+    
+    if start_date:
+        query = query.filter(
+            or_(
+                models.Rental.end_date.is_(None),
+                models.Rental.end_date >= start_date
+            )
+        )
+    
+    if end_date:
+        query = query.filter(models.Rental.start_date <= end_date)
+    
+    return query.order_by(models.Rental.start_date.desc()).offset(skip).limit(limit).all()
+
+
+def get_rental(db: Session, rental_id: UUID):
+    """Get a rental by ID."""
+    rental = db.query(models.Rental).filter(models.Rental.id == rental_id).first()
+    if not rental:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rental not found")
+    return rental
+
+
+def update_rental(db: Session, rental_id: UUID, update: schemas.RentalUpdate):
+    """Update a rental, checking for conflicts."""
+    rental = get_rental(db, rental_id)
+    update_data = update.model_dump(exclude_unset=True)
+    
+    # Get new values or use existing ones
+    new_bike_id = update_data.get("bike_id", rental.bike_id)
+    new_start_date = update_data.get("start_date", rental.start_date)
+    new_end_date = update_data.get("end_date", rental.end_date)
+    
+    # Check for conflicts if bike or dates are being changed
+    if "bike_id" in update_data or "start_date" in update_data or "end_date" in update_data:
+        if check_rental_conflicts(db, new_bike_id, new_start_date, new_end_date, exclude_rental_id=rental_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Bike is already rented for the specified date range"
+            )
+    
+    # Verify bike exists if being changed
+    if "bike_id" in update_data:
+        get_bike(db, update_data["bike_id"])
+    
+    # Verify profile exists if being changed
+    if "profile_id" in update_data:
+        profile = (
+            db.query(auth_models.UserProfile)
+            .filter(auth_models.UserProfile.id == update_data["profile_id"])
+            .first()
+        )
+        if not profile:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    
+    for key, value in update_data.items():
+        setattr(rental, key, value)
+    
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflict updating rental")
+    db.refresh(rental)
+    return rental
+
+
+def delete_rental(db: Session, rental_id: UUID):
+    """Delete a rental."""
+    rental = get_rental(db, rental_id)
+    db.delete(rental)
+    db.commit()
 
