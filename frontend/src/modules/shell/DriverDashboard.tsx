@@ -24,6 +24,17 @@ type BikeWithBatteries = {
 	batteries: Battery[];
 };
 
+type Rental = {
+	id: string;
+	bike_id: string;
+	profile_id: string;
+	start_date: string;
+	end_date?: string | null;
+	notes?: string | null;
+	created_at: string;
+	updated_at: string;
+};
+
 export function DriverDashboard() {
 	const myBikesQuery = useQuery<BikeWithBatteries[]>({
 		queryKey: ["me", "bikes"],
@@ -33,9 +44,18 @@ export function DriverDashboard() {
 		},
 	});
 
-	const isLoading = myBikesQuery.isLoading;
-	const isError = myBikesQuery.isError;
+	const myRentalsQuery = useQuery<Rental[]>({
+		queryKey: ["rentals"],
+		queryFn: async () => {
+			const resp = await api.get("/fleet/rentals");
+			return resp.data as Rental[];
+		},
+	});
+
+	const isLoading = myBikesQuery.isLoading || myRentalsQuery.isLoading;
+	const isError = myBikesQuery.isError || myRentalsQuery.isError;
 	const bikes = myBikesQuery.data ?? [];
+	const rentals = myRentalsQuery.data ?? [];
 
 	return (
 		<div className="space-y-6">
@@ -100,6 +120,48 @@ export function DriverDashboard() {
 										</div>
 									</div>
 								))
+							)}
+						</div>
+					</section>
+					<section>
+						<h3 className="font-semibold mb-2">My Rentals ({rentals.length})</h3>
+						<div className="space-y-4">
+							{rentals.length === 0 ? (
+								<div className="border rounded-md px-3 py-2 text-sm text-gray-600">No rentals.</div>
+							) : (
+								rentals.map((rental) => {
+									const bike = bikes.find((b) => b.id === rental.bike_id);
+									const isOngoing = !rental.end_date;
+									const startDate = new Date(rental.start_date).toLocaleDateString();
+									const endDate = rental.end_date ? new Date(rental.end_date).toLocaleDateString() : "Ongoing";
+
+									return (
+										<div key={rental.id} className="border rounded-md">
+											<div className="px-3 py-2 text-sm">
+												<div className="flex items-center gap-3 flex-wrap">
+													<span className="font-medium">
+														{bike?.serial_number ?? "Unknown bike"}
+													</span>
+													<span className="text-gray-600">
+														{startDate} - {endDate}
+													</span>
+													{isOngoing ? (
+														<span className="text-xs rounded bg-green-100 px-2 py-0.5 text-green-700">
+															Active
+														</span>
+													) : (
+														<span className="text-xs rounded bg-gray-100 px-2 py-0.5 text-gray-700">
+															Completed
+														</span>
+													)}
+												</div>
+												{rental.notes ? (
+													<div className="mt-1 text-xs text-gray-600">Notes: {rental.notes}</div>
+												) : null}
+											</div>
+										</div>
+									);
+								})
 							)}
 						</div>
 					</section>

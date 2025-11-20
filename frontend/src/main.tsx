@@ -7,6 +7,10 @@ import { AuthProvider, useAuth } from "./modules/auth/AuthContext";
 import { LoginPage } from "./modules/auth/LoginPage";
 import { Dashboard } from "./modules/shell/Dashboard";
 import { AppShell } from "./modules/shell/AppShell";
+import { DriversPage } from "./modules/shell/DriversPage";
+import { BikesPage } from "./modules/shell/BikesPage";
+import { BatteriesPage } from "./modules/shell/BatteriesPage";
+import { RentalsPage } from "./modules/shell/RentalsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +49,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   <AppShell>
                     <Routes>
                       <Route index element={<Dashboard />} />
+                      <Route path="drivers" element={<DriversPage />} />
+                      <Route path="bikes" element={<BikesPage />} />
+                      <Route path="batteries" element={<BatteriesPage />} />
+                      <Route path="rentals" element={<RentalsPage />} />
                     </Routes>
                   </AppShell>
                 </ProtectedRoute>
