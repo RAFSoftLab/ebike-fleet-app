@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum as SAEnum, Date, Text
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum as SAEnum, Date, Text, Numeric
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -104,5 +104,68 @@ class Rental(Base):
 
     bike = relationship("Bike", backref="rentals", foreign_keys=[bike_id])
     profile = relationship("UserProfile", backref="rentals", foreign_keys=[profile_id])
+
+
+class TransactionType(enum.Enum):
+    income = "income"
+    expense = "expense"
+
+
+class FinancialTransaction(Base):
+    __tablename__ = "financial_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    transaction_type = Column(SAEnum(TransactionType, name="transaction_type"), nullable=False, index=True)
+    amount = Column(Numeric(10, 2), nullable=False)
+    description = Column(Text, nullable=True)
+    # Optional references to related entities
+    rental_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("rentals.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    maintenance_record_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("maintenance_records.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    transaction_date = Column(Date, nullable=False, index=True, server_default=func.current_date())
+    
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    rental = relationship("Rental", backref="transactions", foreign_keys=[rental_id])
+    maintenance_record = relationship("MaintenanceRecord", backref="transaction", foreign_keys=[maintenance_record_id])
+
+
+class MaintenanceRecord(Base):
+    __tablename__ = "maintenance_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    # Reference to either bike or battery (one must be set)
+    bike_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bikes.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    battery_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("batteries.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    service_date = Column(Date, nullable=False, index=True)
+    description = Column(Text, nullable=False, comment="What maintenance was performed")
+    cost = Column(Numeric(10, 2), nullable=False, comment="Cost of the maintenance")
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    bike = relationship("Bike", backref="maintenance_records", foreign_keys=[bike_id])
+    battery = relationship("Battery", backref="maintenance_records", foreign_keys=[battery_id])
 
 

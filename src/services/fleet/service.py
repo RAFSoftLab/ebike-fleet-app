@@ -1,12 +1,13 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func as sql_func
 from fastapi import HTTPException, status
 from uuid import UUID
 from . import models, schemas
 from typing import List, Tuple, Optional
 from datetime import date
 from services.authentication import models as auth_models
+from decimal import Decimal
 
 
 # Bikes
@@ -402,4 +403,264 @@ def delete_rental(db: Session, rental_id: UUID):
     rental = get_rental(db, rental_id)
     db.delete(rental)
     db.commit()
+
+
+# Maintenance Records
+def create_maintenance_record(db: Session, data: schemas.MaintenanceRecordCreate):
+    """Create a new maintenance record and associated financial transaction."""
+    # Validate that either bike or battery exists
+    if data.bike_id:
+        bike = get_bike(db, data.bike_id)
+    if data.battery_id:
+        battery = get_battery(db, data.battery_id)
+    
+    # Create maintenance record
+    maintenance_record = models.MaintenanceRecord(
+        bike_id=data.bike_id,
+        battery_id=data.battery_id,
+        service_date=data.service_date,
+        description=data.description,
+        cost=data.cost,
+        notes=data.notes,
+    )
+    db.add(maintenance_record)
+    
+    try:
+        db.flush()  # Flush to get the ID
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Error creating maintenance record")
+    
+    # Create associated financial transaction for the expense
+    transaction = models.FinancialTransaction(
+        transaction_type=models.TransactionType.expense,
+        amount=data.cost,
+        description=f"Maintenance: {data.description}",
+        maintenance_record_id=maintenance_record.id,
+        transaction_date=data.service_date,
+    )
+    db.add(transaction)
+    
+    # Update last_service_at on bike or battery
+    if data.bike_id:
+        bike.last_service_at = maintenance_record.created_at
+    if data.battery_id:
+        battery.last_service_at = maintenance_record.created_at
+    
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Error creating maintenance record")
+    
+    db.refresh(maintenance_record)
+    return maintenance_record
+
+
+def list_maintenance_records(
+    db: Session,
+    bike_id: Optional[UUID] = None,
+    battery_id: Optional[UUID] = None,
+    skip: int = 0,
+    limit: int = 100
+):
+    """List maintenance records with optional filters."""
+    query = db.query(models.MaintenanceRecord)
+    
+    if bike_id:
+        query = query.filter(models.MaintenanceRecord.bike_id == bike_id)
+    
+    if battery_id:
+        query = query.filter(models.MaintenanceRecord.battery_id == battery_id)
+    
+    return query.order_by(models.MaintenanceRecord.service_date.desc()).offset(skip).limit(limit).all()
+
+
+def get_maintenance_record(db: Session, record_id: UUID):
+    """Get a maintenance record by ID."""
+    record = db.query(models.MaintenanceRecord).filter(models.MaintenanceRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Maintenance record not found")
+    return record
+
+
+def update_maintenance_record(db: Session, record_id: UUID, update: schemas.MaintenanceRecordUpdate):
+    """Update a maintenance record."""
+    record = get_maintenance_record(db, record_id)
+    update_data = update.model_dump(exclude_unset=True)
+    
+    # Validate references if being updated
+    new_bike_id = update_data.get("bike_id", record.bike_id)
+    new_battery_id = update_data.get("battery_id", record.battery_id)
+    
+    if not new_bike_id and not new_battery_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either bike_id or battery_id must be provided"
+        )
+    
+    if new_bike_id:
+        get_bike(db, new_bike_id)
+    if new_battery_id:
+        get_battery(db, new_battery_id)
+    
+    # Update cost if changed, and update associated transaction
+    old_cost = record.cost
+    new_cost = update_data.get("cost", old_cost)
+    
+    for key, value in update_data.items():
+        setattr(record, key, value)
+    
+    # Update associated financial transaction if cost changed
+    if "cost" in update_data and old_cost != new_cost:
+        transaction = (
+            db.query(models.FinancialTransaction)
+            .filter(models.FinancialTransaction.maintenance_record_id == record_id)
+            .first()
+        )
+        if transaction:
+            transaction.amount = new_cost
+            if "description" in update_data:
+                transaction.description = f"Maintenance: {update_data['description']}"
+    
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflict updating maintenance record")
+    
+    db.refresh(record)
+    return record
+
+
+def delete_maintenance_record(db: Session, record_id: UUID):
+    """Delete a maintenance record. Associated transaction will be deleted via CASCADE."""
+    record = get_maintenance_record(db, record_id)
+    db.delete(record)
+    db.commit()
+
+
+# Financial Transactions
+def create_financial_transaction(db: Session, data: schemas.FinancialTransactionCreate):
+    """Create a financial transaction."""
+    # Validate references
+    if data.rental_id:
+        get_rental(db, data.rental_id)
+    if data.maintenance_record_id:
+        get_maintenance_record(db, data.maintenance_record_id)
+    
+    transaction = models.FinancialTransaction(
+        transaction_type=models.TransactionType[data.transaction_type],
+        amount=data.amount,
+        description=data.description,
+        rental_id=data.rental_id,
+        maintenance_record_id=data.maintenance_record_id,
+        transaction_date=data.transaction_date,
+    )
+    db.add(transaction)
+    
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Error creating financial transaction")
+    
+    db.refresh(transaction)
+    return transaction
+
+
+def list_financial_transactions(
+    db: Session,
+    transaction_type: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    skip: int = 0,
+    limit: int = 100
+):
+    """List financial transactions with optional filters."""
+    query = db.query(models.FinancialTransaction)
+    
+    if transaction_type:
+        query = query.filter(models.FinancialTransaction.transaction_type == models.TransactionType[transaction_type])
+    
+    if start_date:
+        query = query.filter(models.FinancialTransaction.transaction_date >= start_date)
+    
+    if end_date:
+        query = query.filter(models.FinancialTransaction.transaction_date <= end_date)
+    
+    return query.order_by(models.FinancialTransaction.transaction_date.desc()).offset(skip).limit(limit).all()
+
+
+def get_financial_transaction(db: Session, transaction_id: UUID):
+    """Get a financial transaction by ID."""
+    transaction = db.query(models.FinancialTransaction).filter(models.FinancialTransaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Financial transaction not found")
+    return transaction
+
+
+def update_financial_transaction(db: Session, transaction_id: UUID, update: schemas.FinancialTransactionUpdate):
+    """Update a financial transaction."""
+    transaction = get_financial_transaction(db, transaction_id)
+    update_data = update.model_dump(exclude_unset=True)
+    
+    if "transaction_type" in update_data:
+        update_data["transaction_type"] = models.TransactionType[update_data["transaction_type"]]
+    
+    # Validate references if being updated
+    if "rental_id" in update_data:
+        get_rental(db, update_data["rental_id"])
+    if "maintenance_record_id" in update_data:
+        get_maintenance_record(db, update_data["maintenance_record_id"])
+    
+    for key, value in update_data.items():
+        setattr(transaction, key, value)
+    
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflict updating financial transaction")
+    
+    db.refresh(transaction)
+    return transaction
+
+
+def delete_financial_transaction(db: Session, transaction_id: UUID):
+    """Delete a financial transaction."""
+    transaction = get_financial_transaction(db, transaction_id)
+    db.delete(transaction)
+    db.commit()
+
+
+def get_financial_summary(
+    db: Session,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None
+) -> schemas.FinancialSummary:
+    """Get financial summary (income, expenses, net profit)."""
+    query = db.query(models.FinancialTransaction)
+    
+    if start_date:
+        query = query.filter(models.FinancialTransaction.transaction_date >= start_date)
+    if end_date:
+        query = query.filter(models.FinancialTransaction.transaction_date <= end_date)
+    
+    # Calculate totals
+    income_query = query.filter(models.FinancialTransaction.transaction_type == models.TransactionType.income)
+    expense_query = query.filter(models.FinancialTransaction.transaction_type == models.TransactionType.expense)
+    
+    total_income = income_query.with_entities(sql_func.sum(models.FinancialTransaction.amount)).scalar() or Decimal('0')
+    total_expenses = expense_query.with_entities(sql_func.sum(models.FinancialTransaction.amount)).scalar() or Decimal('0')
+    income_count = income_query.count()
+    expense_count = expense_query.count()
+    
+    return schemas.FinancialSummary(
+        total_income=total_income,
+        total_expenses=total_expenses,
+        net_profit=total_income - total_expenses,
+        income_count=income_count,
+        expense_count=expense_count,
+    )
 

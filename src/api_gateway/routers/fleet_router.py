@@ -316,3 +316,151 @@ def delete_rental(
     return Response(status_code=204)
 
 
+# Maintenance Records
+@router.post("/maintenance", response_model=schemas.MaintenanceRecordRead, status_code=status.HTTP_201_CREATED)
+def create_maintenance_record(
+    maintenance: schemas.MaintenanceRecordCreate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Create a new maintenance record. Admin only."""
+    return service.create_maintenance_record(db, maintenance)
+
+
+@router.get("/maintenance", response_model=list[schemas.MaintenanceRecordRead])
+def list_maintenance_records(
+    bike_id: Optional[UUID] = Query(None, description="Filter by bike ID"),
+    battery_id: Optional[UUID] = Query(None, description="Filter by battery ID"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """List maintenance records with optional filters. Admin only."""
+    return service.list_maintenance_records(
+        db,
+        bike_id=bike_id,
+        battery_id=battery_id,
+        skip=skip,
+        limit=limit
+    )
+
+
+@router.get("/maintenance/{record_id}", response_model=schemas.MaintenanceRecordRead)
+def get_maintenance_record(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Get a maintenance record by ID. Admin only."""
+    return service.get_maintenance_record(db, record_id)
+
+
+@router.put("/maintenance/{record_id}", response_model=schemas.MaintenanceRecordRead)
+def update_maintenance_record(
+    record_id: UUID,
+    update: schemas.MaintenanceRecordUpdate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Update a maintenance record. Admin only."""
+    return service.update_maintenance_record(db, record_id, update)
+
+
+@router.delete("/maintenance/{record_id}", status_code=204)
+def delete_maintenance_record(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Delete a maintenance record. Admin only."""
+    service.delete_maintenance_record(db, record_id)
+    return Response(status_code=204)
+
+
+# Financial Transactions
+@router.post("/transactions", response_model=schemas.FinancialTransactionRead, status_code=status.HTTP_201_CREATED)
+def create_financial_transaction(
+    transaction: schemas.FinancialTransactionCreate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Create a financial transaction. Admin only."""
+    return service.create_financial_transaction(db, transaction)
+
+
+@router.get("/transactions", response_model=list[schemas.FinancialTransactionRead])
+def list_financial_transactions(
+    transaction_type: Optional[str] = Query(None, description="Filter by type: income or expense"),
+    start_date: Optional[date] = Query(None, description="Filter transactions from this date"),
+    end_date: Optional[date] = Query(None, description="Filter transactions until this date"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """List financial transactions with optional filters. Admin only."""
+    return service.list_financial_transactions(
+        db,
+        transaction_type=transaction_type,
+        start_date=start_date,
+        end_date=end_date,
+        skip=skip,
+        limit=limit
+    )
+
+
+@router.get("/transactions/{transaction_id}", response_model=schemas.FinancialTransactionRead)
+def get_financial_transaction(
+    transaction_id: UUID,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Get a financial transaction by ID. Admin only."""
+    return service.get_financial_transaction(db, transaction_id)
+
+
+@router.put("/transactions/{transaction_id}", response_model=schemas.FinancialTransactionRead)
+def update_financial_transaction(
+    transaction_id: UUID,
+    update: schemas.FinancialTransactionUpdate,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Update a financial transaction. Admin only."""
+    return service.update_financial_transaction(db, transaction_id, update)
+
+
+@router.delete("/transactions/{transaction_id}", status_code=204)
+def delete_financial_transaction(
+    transaction_id: UUID,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Delete a financial transaction. Admin only."""
+    service.delete_financial_transaction(db, transaction_id)
+    return Response(status_code=204)
+
+
+# Financial Analytics
+@router.get("/analytics/financial", response_model=schemas.FinancialAnalytics)
+def get_financial_analytics(
+    start_date: Optional[date] = Query(None, description="Start date for analytics"),
+    end_date: Optional[date] = Query(None, description="End date for analytics"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Get financial analytics including summary and transactions. Admin only."""
+    summary = service.get_financial_summary(db, start_date=start_date, end_date=end_date)
+    transactions = service.list_financial_transactions(
+        db,
+        start_date=start_date,
+        end_date=end_date,
+        skip=skip,
+        limit=limit
+    )
+    return schemas.FinancialAnalytics(summary=summary, transactions=transactions)
+
+
