@@ -1,8 +1,12 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api";
+import { useCurrency } from "../../shared/CurrencyContext";
 
 export function AdminDashboard() {
+	const { formatCurrency, convertAmount, currency: displayCurrency } = useCurrency();
+	const [convertedTransactions, setConvertedTransactions] = React.useState<Record<string, number | null>>({});
+	
 	// Fetch summary data for analytics
 	const bikesQuery = useQuery({
 		queryKey: ["bikes"],
@@ -37,9 +41,9 @@ export function AdminDashboard() {
 	});
 
 	const financialAnalyticsQuery = useQuery({
-		queryKey: ["financial-analytics"],
+		queryKey: ["financial-analytics", displayCurrency],
 		queryFn: async () => {
-			const resp = await api.get("/fleet/analytics/financial");
+			const resp = await api.get(`/fleet/analytics/financial?target_currency=${displayCurrency}`);
 			return resp.data;
 		},
 	});
@@ -61,6 +65,59 @@ export function AdminDashboard() {
 	const rentals = rentalsQuery.data ?? [];
 	const financialAnalytics = financialAnalyticsQuery.data;
 	const maintenanceRecords = maintenanceQuery.data ?? [];
+	const [convertedMaintenance, setConvertedMaintenance] = React.useState<Record<string, number | null>>({});
+
+	// Convert transaction amounts when currency or transactions change
+	React.useEffect(() => {
+		if (!financialAnalytics?.transactions) return;
+		
+		const convertAll = async () => {
+			const conversions: Record<string, number | null> = {};
+			await Promise.all(
+				financialAnalytics.transactions.slice(0, 10).map(async (tx: any) => {
+					if (tx.currency === displayCurrency) {
+						conversions[tx.id] = parseFloat(tx.amount);
+					} else {
+						const converted = await convertAmount(
+							tx.amount,
+							tx.currency || "RSD",
+							tx.transaction_date
+						);
+						conversions[tx.id] = converted;
+					}
+				})
+			);
+			setConvertedTransactions(conversions);
+		};
+		
+		convertAll();
+	}, [financialAnalytics?.transactions, displayCurrency, convertAmount]);
+
+	// Convert maintenance record amounts when currency or records change
+	React.useEffect(() => {
+		if (!maintenanceRecords || maintenanceRecords.length === 0) return;
+		
+		const convertAll = async () => {
+			const conversions: Record<string, number | null> = {};
+			await Promise.all(
+				maintenanceRecords.slice(0, 10).map(async (record: any) => {
+					if (record.currency === displayCurrency) {
+						conversions[record.id] = parseFloat(record.cost);
+					} else {
+						const converted = await convertAmount(
+							record.cost,
+							record.currency || "RSD",
+							record.service_date
+						);
+						conversions[record.id] = converted;
+					}
+				})
+			);
+			setConvertedMaintenance(conversions);
+		};
+		
+		convertAll();
+	}, [maintenanceRecords, displayCurrency, convertAmount]);
 
 	const activeRentals = rentals.filter((r: any) => !r.end_date).length;
 	const assignedBikes = bikes.filter((b: any) => b.assigned_profile_id).length;
@@ -110,21 +167,21 @@ export function AdminDashboard() {
 							<div className="border rounded-lg p-4 bg-green-50">
 								<div className="text-sm text-gray-600">Total Income</div>
 								<div className="text-2xl font-semibold mt-1 text-green-700">
-									${parseFloat(totalIncome).toFixed(2)}
+									{formatCurrency(totalIncome)}
 								</div>
 								<div className="text-xs text-gray-500 mt-1">{incomeCount} transactions</div>
 							</div>
 							<div className="border rounded-lg p-4 bg-red-50">
 								<div className="text-sm text-gray-600">Total Expenses</div>
 								<div className="text-2xl font-semibold mt-1 text-red-700">
-									${parseFloat(totalExpenses).toFixed(2)}
+									{formatCurrency(totalExpenses)}
 								</div>
 								<div className="text-xs text-gray-500 mt-1">{expenseCount} transactions</div>
 							</div>
 							<div className={`border rounded-lg p-4 ${parseFloat(netProfit) >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
 								<div className="text-sm text-gray-600">Net Profit</div>
 								<div className={`text-2xl font-semibold mt-1 ${parseFloat(netProfit) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-									${parseFloat(netProfit).toFixed(2)}
+									{formatCurrency(netProfit)}
 								</div>
 								<div className="text-xs text-gray-500 mt-1">All time</div>
 							</div>
@@ -157,7 +214,10 @@ export function AdminDashboard() {
 													<td className={`px-4 py-2 text-right font-semibold ${
 														tx.transaction_type === 'income' ? 'text-green-700' : 'text-red-700'
 													}`}>
-														{tx.transaction_type === 'income' ? '+' : '-'}${parseFloat(tx.amount).toFixed(2)}
+														{tx.transaction_type === 'income' ? '+' : '-'}
+														{convertedTransactions[tx.id] !== undefined
+															? formatCurrency(convertedTransactions[tx.id] ?? tx.amount)
+															: formatCurrency(tx.amount)}
 													</td>
 												</tr>
 											))}
@@ -191,7 +251,9 @@ export function AdminDashboard() {
 												</td>
 												<td className="px-4 py-2">{record.description}</td>
 												<td className="px-4 py-2 text-right font-semibold text-red-700">
-													${parseFloat(record.cost).toFixed(2)}
+													{convertedMaintenance[record.id] !== undefined
+														? formatCurrency(convertedMaintenance[record.id] ?? record.cost)
+														: formatCurrency(record.cost)}
 												</td>
 											</tr>
 										))}

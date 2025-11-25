@@ -1,6 +1,7 @@
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../shared/api";
+import { useCurrency } from "../../shared/CurrencyContext";
 
 type Bike = {
 	id: string;
@@ -22,6 +23,7 @@ type Battery = {
 
 export function BatteriesPage() {
 	const queryClient = useQueryClient();
+	const { getCurrencySymbol } = useCurrency();
 
 	// Create battery form state
 	const [batterySerialNumber, setBatterySerialNumber] = React.useState("");
@@ -35,10 +37,12 @@ export function BatteriesPage() {
 	const [editAssignedBikeId, setEditAssignedBikeId] = React.useState<string | "">("");
 
 	// Maintenance record form state
+	const { availableCurrencies } = useCurrency();
 	const [showMaintenanceForm, setShowMaintenanceForm] = React.useState<string | null>(null);
 	const [maintenanceServiceDate, setMaintenanceServiceDate] = React.useState("");
 	const [maintenanceDescription, setMaintenanceDescription] = React.useState("");
 	const [maintenanceCost, setMaintenanceCost] = React.useState<number | "">("");
+	const [maintenanceCurrency, setMaintenanceCurrency] = React.useState("RSD");
 	const [maintenanceNotes, setMaintenanceNotes] = React.useState("");
 
 	const bikesQuery = useQuery<Bike[]>({
@@ -126,6 +130,7 @@ export function BatteriesPage() {
 				service_date: maintenanceServiceDate,
 				description: maintenanceDescription.trim(),
 				cost: maintenanceCost,
+				currency: maintenanceCurrency,
 			};
 			if (maintenanceNotes.trim()) {
 				payload.notes = maintenanceNotes.trim();
@@ -138,6 +143,7 @@ export function BatteriesPage() {
 			setMaintenanceServiceDate("");
 			setMaintenanceDescription("");
 			setMaintenanceCost("");
+			setMaintenanceCurrency("RSD");
 			setMaintenanceNotes("");
 			queryClient.invalidateQueries({ queryKey: ["maintenance"] });
 			queryClient.invalidateQueries({ queryKey: ["financial-analytics"] });
@@ -315,7 +321,7 @@ export function BatteriesPage() {
 													/>
 												</label>
 												<label className="flex flex-col gap-1">
-													<span className="text-xs text-gray-600">Cost ($)</span>
+													<span className="text-xs text-gray-600">Cost</span>
 													<input
 														type="number"
 														min={0}
@@ -330,6 +336,20 @@ export function BatteriesPage() {
 														className="border rounded px-2 py-1 text-sm"
 														placeholder="0.00"
 													/>
+												</label>
+												<label className="flex flex-col gap-1">
+													<span className="text-xs text-gray-600">Currency</span>
+													<select
+														value={maintenanceCurrency}
+														onChange={(e) => setMaintenanceCurrency(e.target.value)}
+														className="border rounded px-2 py-1 text-sm bg-white"
+													>
+														{availableCurrencies.map((curr) => (
+															<option key={curr.code} value={curr.code}>
+																{curr.code} - {curr.name}
+															</option>
+														))}
+													</select>
 												</label>
 												<label className="flex flex-col gap-1 md:col-span-1">
 													<span className="text-xs text-gray-600">Notes (optional)</span>
@@ -356,6 +376,7 @@ export function BatteriesPage() {
 															setMaintenanceServiceDate("");
 															setMaintenanceDescription("");
 															setMaintenanceCost("");
+															setMaintenanceCurrency("RSD");
 															setMaintenanceNotes("");
 														}}
 														className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm px-3 py-2 rounded"

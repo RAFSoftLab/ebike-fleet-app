@@ -117,6 +117,7 @@ class FinancialTransaction(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     transaction_type = Column(SAEnum(TransactionType, name="transaction_type"), nullable=False, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
+    currency = Column(String, nullable=False, default="RSD", server_default="RSD")
     description = Column(Text, nullable=True)
     # Optional references to related entities
     rental_id = Column(
@@ -160,6 +161,7 @@ class MaintenanceRecord(Base):
     service_date = Column(Date, nullable=False, index=True)
     description = Column(Text, nullable=False, comment="What maintenance was performed")
     cost = Column(Numeric(10, 2), nullable=False, comment="Cost of the maintenance")
+    currency = Column(String, nullable=False, default="RSD", server_default="RSD")
     notes = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -167,5 +169,29 @@ class MaintenanceRecord(Base):
 
     bike = relationship("Bike", backref="maintenance_records", foreign_keys=[bike_id])
     battery = relationship("Battery", backref="maintenance_records", foreign_keys=[battery_id])
+
+
+class ApplicationSettings(Base):
+    __tablename__ = "application_settings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    key = Column(String, unique=True, nullable=False, index=True)
+    value = Column(String, nullable=False)
+    
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ExchangeRate(Base):
+    __tablename__ = "exchange_rates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    base_currency = Column(String, nullable=False)
+    target_currency = Column(String, nullable=False)
+    rate = Column(Numeric(10, 6), nullable=False)
+    rate_date = Column(Date, nullable=False, index=True)
+    
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 

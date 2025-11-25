@@ -4,6 +4,7 @@ from sqlalchemy import and_, or_, func as sql_func
 from fastapi import HTTPException, status
 from uuid import UUID
 from . import models, schemas
+from . import exchange_rate_service
 from typing import List, Tuple, Optional
 from datetime import date
 from services.authentication import models as auth_models
@@ -421,6 +422,7 @@ def create_maintenance_record(db: Session, data: schemas.MaintenanceRecordCreate
         service_date=data.service_date,
         description=data.description,
         cost=data.cost,
+        currency=data.currency or "RSD",
         notes=data.notes,
     )
     db.add(maintenance_record)
@@ -435,6 +437,7 @@ def create_maintenance_record(db: Session, data: schemas.MaintenanceRecordCreate
     transaction = models.FinancialTransaction(
         transaction_type=models.TransactionType.expense,
         amount=data.cost,
+        currency=data.currency or "RSD",
         description=f"Maintenance: {data.description}",
         maintenance_record_id=maintenance_record.id,
         transaction_date=data.service_date,
@@ -511,15 +514,18 @@ def update_maintenance_record(db: Session, record_id: UUID, update: schemas.Main
     for key, value in update_data.items():
         setattr(record, key, value)
     
-    # Update associated financial transaction if cost changed
-    if "cost" in update_data and old_cost != new_cost:
+    # Update associated financial transaction if cost or currency changed
+    if ("cost" in update_data and old_cost != new_cost) or "currency" in update_data:
         transaction = (
             db.query(models.FinancialTransaction)
             .filter(models.FinancialTransaction.maintenance_record_id == record_id)
             .first()
         )
         if transaction:
-            transaction.amount = new_cost
+            if "cost" in update_data:
+                transaction.amount = new_cost
+            if "currency" in update_data:
+                transaction.currency = update_data["currency"]
             if "description" in update_data:
                 transaction.description = f"Maintenance: {update_data['description']}"
     
@@ -552,6 +558,7 @@ def create_financial_transaction(db: Session, data: schemas.FinancialTransaction
     transaction = models.FinancialTransaction(
         transaction_type=models.TransactionType[data.transaction_type],
         amount=data.amount,
+        currency=data.currency or "RSD",
         description=data.description,
         rental_id=data.rental_id,
         maintenance_record_id=data.maintenance_record_id,
@@ -637,9 +644,13 @@ def delete_financial_transaction(db: Session, transaction_id: UUID):
 def get_financial_summary(
     db: Session,
     start_date: Optional[date] = None,
-    end_date: Optional[date] = None
+    end_date: Optional[date] = None,
+    target_currency: Optional[str] = None
 ) -> schemas.FinancialSummary:
-    """Get financial summary (income, expenses, net profit)."""
+    """
+    Get financial summary (income, expenses, net profit).
+    If target_currency is provided, converts all amounts to that currency.
+    """
     query = db.query(models.FinancialTransaction)
     
     if start_date:
@@ -647,12 +658,38 @@ def get_financial_summary(
     if end_date:
         query = query.filter(models.FinancialTransaction.transaction_date <= end_date)
     
-    # Calculate totals
+    # Get display currency (default to app setting)
+    if target_currency is None:
+        target_currency = get_currency(db)
+    
+    # Calculate totals with currency conversion
     income_query = query.filter(models.FinancialTransaction.transaction_type == models.TransactionType.income)
     expense_query = query.filter(models.FinancialTransaction.transaction_type == models.TransactionType.expense)
     
-    total_income = income_query.with_entities(sql_func.sum(models.FinancialTransaction.amount)).scalar() or Decimal('0')
-    total_expenses = expense_query.with_entities(sql_func.sum(models.FinancialTransaction.amount)).scalar() or Decimal('0')
+    total_income = Decimal('0')
+    total_expenses = Decimal('0')
+    
+    # Convert each transaction to target currency
+    for transaction in income_query.all():
+        converted = exchange_rate_service.convert_amount(
+            db, transaction.amount, transaction.currency, target_currency, transaction.transaction_date
+        )
+        if converted:
+            total_income += converted
+        else:
+            # Fallback: use original amount if conversion fails
+            total_income += transaction.amount
+    
+    for transaction in expense_query.all():
+        converted = exchange_rate_service.convert_amount(
+            db, transaction.amount, transaction.currency, target_currency, transaction.transaction_date
+        )
+        if converted:
+            total_expenses += converted
+        else:
+            # Fallback: use original amount if conversion fails
+            total_expenses += transaction.amount
+    
     income_count = income_query.count()
     expense_count = expense_query.count()
     
@@ -663,4 +700,36 @@ def get_financial_summary(
         income_count=income_count,
         expense_count=expense_count,
     )
+
+
+# Application Settings
+def get_setting(db: Session, key: str, default: Optional[str] = None) -> Optional[str]:
+    """Get a setting value by key."""
+    setting = db.query(models.ApplicationSettings).filter(models.ApplicationSettings.key == key).first()
+    if setting:
+        return setting.value
+    return default
+
+
+def get_currency(db: Session) -> str:
+    """Get the current currency setting, defaulting to RSD."""
+    return get_setting(db, "currency", "RSD")
+
+
+def update_setting(db: Session, key: str, value: str) -> models.ApplicationSettings:
+    """Update or create a setting."""
+    setting = db.query(models.ApplicationSettings).filter(models.ApplicationSettings.key == key).first()
+    if setting:
+        setting.value = value
+    else:
+        setting = models.ApplicationSettings(key=key, value=value)
+        db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def update_currency(db: Session, currency: str) -> models.ApplicationSettings:
+    """Update the currency setting."""
+    return update_setting(db, "currency", currency)
 

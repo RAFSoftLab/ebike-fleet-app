@@ -120,6 +120,7 @@ class RentalWithDetailsRead(RentalRead):
 class FinancialTransactionBase(BaseModel):
     transaction_type: str
     amount: Decimal = Field(..., description="Transaction amount (positive)")
+    currency: str = Field(default="RSD", description="Currency code (RSD, EUR, USD)")
     description: Optional[str] = None
     rental_id: Optional[UUID] = None
     maintenance_record_id: Optional[UUID] = None
@@ -133,6 +134,7 @@ class FinancialTransactionCreate(FinancialTransactionBase):
 class FinancialTransactionUpdate(BaseModel):
     transaction_type: Optional[str] = None
     amount: Optional[Decimal] = None
+    currency: Optional[str] = None
     description: Optional[str] = None
     rental_id: Optional[UUID] = None
     maintenance_record_id: Optional[UUID] = None
@@ -153,6 +155,7 @@ class MaintenanceRecordBase(BaseModel):
     service_date: date
     description: str = Field(..., description="What maintenance was performed")
     cost: Decimal = Field(..., description="Cost of the maintenance", ge=0)
+    currency: str = Field(default="RSD", description="Currency code (RSD, EUR, USD)")
     notes: Optional[str] = None
 
     @model_validator(mode='after')
@@ -174,6 +177,7 @@ class MaintenanceRecordUpdate(BaseModel):
     service_date: Optional[date] = None
     description: Optional[str] = None
     cost: Optional[Decimal] = Field(None, ge=0)
+    currency: Optional[str] = None
     notes: Optional[str] = None
 
     @model_validator(mode='after')
@@ -210,4 +214,40 @@ class FinancialSummary(BaseModel):
 class FinancialAnalytics(BaseModel):
     summary: FinancialSummary
     transactions: list[FinancialTransactionRead]
+
+
+# Application Settings Schemas
+class ApplicationSettingsRead(BaseModel):
+    key: str
+    value: str
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ApplicationSettingsUpdate(BaseModel):
+    value: str
+
+
+class CurrencySettings(BaseModel):
+    currency: str
+
+
+# Exchange Rate Schemas
+class ExchangeRateRead(BaseModel):
+    base_currency: str
+    target_currency: str
+    rate: Decimal
+    rate_date: date
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConvertedAmount(BaseModel):
+    original_amount: Decimal
+    original_currency: str
+    converted_amount: Decimal
+    target_currency: str
+    exchange_rate: Optional[Decimal] = None
 

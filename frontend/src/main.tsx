@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
 import { AuthProvider, useAuth } from "./modules/auth/AuthContext";
+import { CurrencyProvider } from "./shared/CurrencyContext";
 import { LoginPage } from "./modules/auth/LoginPage";
 import { Dashboard } from "./modules/shell/Dashboard";
 import { AppShell } from "./modules/shell/AppShell";
@@ -39,27 +40,29 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/*"
-              element={
-                <ProtectedRoute>
-                  <AppShell>
-                    <Routes>
-                      <Route index element={<Dashboard />} />
-                      <Route path="drivers" element={<DriversPage />} />
-                      <Route path="bikes" element={<BikesPage />} />
-                      <Route path="batteries" element={<BatteriesPage />} />
-                      <Route path="rentals" element={<RentalsPage />} />
-                    </Routes>
-                  </AppShell>
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </BrowserRouter>
+        <CurrencyProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route
+                path="/*"
+                element={
+                  <ProtectedRoute>
+                    <AppShell>
+                      <Routes>
+                        <Route index element={<Dashboard />} />
+                        <Route path="drivers" element={<DriversPage />} />
+                        <Route path="bikes" element={<BikesPage />} />
+                        <Route path="batteries" element={<BatteriesPage />} />
+                        <Route path="rentals" element={<RentalsPage />} />
+                      </Routes>
+                    </AppShell>
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </BrowserRouter>
+        </CurrencyProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>

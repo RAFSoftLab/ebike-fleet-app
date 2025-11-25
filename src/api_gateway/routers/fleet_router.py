@@ -7,9 +7,11 @@ from api_gateway.core.database import get_db
 from api_gateway.core import security
 from services.fleet import schemas, service
 from services.fleet import models as fleet_models
+from services.fleet import exchange_rate_service
 from services.authentication import models as auth_models
 from services.authentication import schemas as auth_schemas
 from services.authentication import service as auth_service
+from decimal import Decimal
 
 router = APIRouter()
 
@@ -447,13 +449,19 @@ def delete_financial_transaction(
 def get_financial_analytics(
     start_date: Optional[date] = Query(None, description="Start date for analytics"),
     end_date: Optional[date] = Query(None, description="End date for analytics"),
+    target_currency: Optional[str] = Query(None, description="Currency to convert amounts to (RSD, EUR, USD)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     _admin = Depends(security.require_admin),
 ):
     """Get financial analytics including summary and transactions. Admin only."""
-    summary = service.get_financial_summary(db, start_date=start_date, end_date=end_date)
+    summary = service.get_financial_summary(
+        db, 
+        start_date=start_date, 
+        end_date=end_date,
+        target_currency=target_currency
+    )
     transactions = service.list_financial_transactions(
         db,
         start_date=start_date,
@@ -462,5 +470,69 @@ def get_financial_analytics(
         limit=limit
     )
     return schemas.FinancialAnalytics(summary=summary, transactions=transactions)
+
+
+@router.get("/settings/currency", response_model=schemas.CurrencySettings)
+def get_currency_setting(
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Get the current currency setting. Admin only."""
+    currency = service.get_currency(db)
+    return schemas.CurrencySettings(currency=currency)
+
+
+@router.put("/settings/currency", response_model=schemas.CurrencySettings)
+def update_currency_setting(
+    payload: schemas.CurrencySettings,
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Update the currency setting. Admin only."""
+    service.update_currency(db, payload.currency)
+    return schemas.CurrencySettings(currency=payload.currency)
+
+
+@router.post("/exchange-rates/refresh")
+def refresh_exchange_rates(
+    base_currency: str = Query("RSD", description="Base currency for exchange rates"),
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Refresh exchange rates from external API. Admin only."""
+    result = exchange_rate_service.refresh_exchange_rates(db, base_currency)
+    return result
+
+
+@router.get("/exchange-rates/convert", response_model=schemas.ConvertedAmount)
+def convert_amount(
+    amount: Decimal = Query(..., description="Amount to convert"),
+    from_currency: str = Query(..., description="Source currency code"),
+    to_currency: str = Query(..., description="Target currency code"),
+    transaction_date: Optional[date] = Query(None, description="Date for historical rate (defaults to today)"),
+    db: Session = Depends(get_db),
+    _admin = Depends(security.require_admin),
+):
+    """Convert amount from one currency to another. Admin only."""
+    converted = exchange_rate_service.convert_amount(
+        db, amount, from_currency, to_currency, transaction_date
+    )
+    if converted is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not convert {amount} {from_currency} to {to_currency}"
+        )
+    
+    rate = exchange_rate_service.get_exchange_rate(
+        db, from_currency, to_currency, transaction_date
+    )
+    
+    return schemas.ConvertedAmount(
+        original_amount=amount,
+        original_currency=from_currency,
+        converted_amount=converted,
+        target_currency=to_currency,
+        exchange_rate=rate
+    )
 
 

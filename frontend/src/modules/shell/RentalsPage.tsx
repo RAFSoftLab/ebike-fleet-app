@@ -1,6 +1,7 @@
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../shared/api";
+import { useCurrency } from "../../shared/CurrencyContext";
 
 type Bike = {
 	id: string;
@@ -33,6 +34,7 @@ type Rental = {
 
 export function RentalsPage() {
 	const queryClient = useQueryClient();
+	const { getCurrencySymbol } = useCurrency();
 
 	// Create rental form state
 	const [rentalBikeId, setRentalBikeId] = React.useState<string | "">("");
@@ -50,8 +52,10 @@ export function RentalsPage() {
 	const [editRentalNotes, setEditRentalNotes] = React.useState("");
 
 	// Income transaction form state
+	const { availableCurrencies } = useCurrency();
 	const [showIncomeForm, setShowIncomeForm] = React.useState<string | null>(null);
 	const [incomeAmount, setIncomeAmount] = React.useState<number | "">("");
+	const [incomeCurrency, setIncomeCurrency] = React.useState("RSD");
 	const [incomeDate, setIncomeDate] = React.useState("");
 	const [incomeDescription, setIncomeDescription] = React.useState("");
 
@@ -136,6 +140,7 @@ export function RentalsPage() {
 			const payload: any = {
 				transaction_type: "income",
 				amount: incomeAmount,
+				currency: incomeCurrency,
 				rental_id: rentalId,
 				transaction_date: incomeDate,
 			};
@@ -148,6 +153,7 @@ export function RentalsPage() {
 		onSuccess: () => {
 			setShowIncomeForm(null);
 			setIncomeAmount("");
+			setIncomeCurrency("RSD");
 			setIncomeDate("");
 			setIncomeDescription("");
 			queryClient.invalidateQueries({ queryKey: ["financial-analytics"] });
@@ -363,7 +369,7 @@ export function RentalsPage() {
 														/>
 													</label>
 													<label className="flex flex-col gap-1">
-														<span className="text-xs text-gray-600">Amount ($)</span>
+														<span className="text-xs text-gray-600">Amount</span>
 														<input
 															type="number"
 															min={0}
@@ -378,6 +384,20 @@ export function RentalsPage() {
 															className="border rounded px-2 py-1 text-sm"
 															placeholder="0.00"
 														/>
+													</label>
+													<label className="flex flex-col gap-1">
+														<span className="text-xs text-gray-600">Currency</span>
+														<select
+															value={incomeCurrency}
+															onChange={(e) => setIncomeCurrency(e.target.value)}
+															className="border rounded px-2 py-1 text-sm bg-white"
+														>
+															{availableCurrencies.map((curr) => (
+																<option key={curr.code} value={curr.code}>
+																	{curr.code} - {curr.name}
+																</option>
+															))}
+														</select>
 													</label>
 													<label className="flex flex-col gap-1 md:col-span-2">
 														<span className="text-xs text-gray-600">Description (optional)</span>
@@ -399,12 +419,13 @@ export function RentalsPage() {
 														</button>
 														<button
 															type="button"
-															onClick={() => {
-																setShowIncomeForm(null);
-																setIncomeAmount("");
-																setIncomeDate("");
-																setIncomeDescription("");
-															}}
+														onClick={() => {
+															setShowIncomeForm(null);
+															setIncomeAmount("");
+															setIncomeCurrency("RSD");
+															setIncomeDate("");
+															setIncomeDescription("");
+														}}
 															className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm px-3 py-2 rounded"
 														>
 															Cancel
