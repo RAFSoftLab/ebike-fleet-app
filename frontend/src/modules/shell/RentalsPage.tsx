@@ -49,6 +49,12 @@ export function RentalsPage() {
 	const [editRentalEndDate, setEditRentalEndDate] = React.useState("");
 	const [editRentalNotes, setEditRentalNotes] = React.useState("");
 
+	// Income transaction form state
+	const [showIncomeForm, setShowIncomeForm] = React.useState<string | null>(null);
+	const [incomeAmount, setIncomeAmount] = React.useState<number | "">("");
+	const [incomeDate, setIncomeDate] = React.useState("");
+	const [incomeDescription, setIncomeDescription] = React.useState("");
+
 	const bikesQuery = useQuery<Bike[]>({
 		queryKey: ["bikes"],
 		queryFn: async () => {
@@ -122,6 +128,30 @@ export function RentalsPage() {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["rentals"] });
+		},
+	});
+
+	const createIncomeMutation = useMutation({
+		mutationFn: async (rentalId: string) => {
+			const payload: any = {
+				transaction_type: "income",
+				amount: incomeAmount,
+				rental_id: rentalId,
+				transaction_date: incomeDate,
+			};
+			if (incomeDescription.trim()) {
+				payload.description = incomeDescription.trim();
+			}
+			const resp = await api.post("/fleet/transactions", payload);
+			return resp.data;
+		},
+		onSuccess: () => {
+			setShowIncomeForm(null);
+			setIncomeAmount("");
+			setIncomeDate("");
+			setIncomeDescription("");
+			queryClient.invalidateQueries({ queryKey: ["financial-analytics"] });
+			queryClient.invalidateQueries({ queryKey: ["transactions"] });
 		},
 	});
 
@@ -264,8 +294,19 @@ export function RentalsPage() {
 													Active
 												</span>
 											) : null}
-											{editingRentalId !== rental.id ? (
+											{editingRentalId !== rental.id && showIncomeForm !== rental.id ? (
 												<div className="ml-auto flex gap-2">
+													<button
+														type="button"
+														onClick={() => {
+															setShowIncomeForm(rental.id);
+															setIncomeDate(new Date().toISOString().split("T")[0]);
+															setIncomeDescription(`Rental income for ${bike?.serial_number ?? "bike"} - ${driverName}`);
+														}}
+														className="bg-green-100 hover:bg-green-200 text-green-800 text-xs px-2 py-1 rounded"
+													>
+														Add Income
+													</button>
 													<button
 														type="button"
 														onClick={() => {
@@ -297,6 +338,86 @@ export function RentalsPage() {
 										</div>
 										{rental.notes ? (
 											<div className="mt-1 text-xs text-gray-600">Notes: {rental.notes}</div>
+										) : null}
+										{showIncomeForm === rental.id ? (
+											<div className="mt-2 border-t pt-2">
+												<h4 className="text-xs font-semibold mb-2">Add Income Transaction</h4>
+												<form
+													onSubmit={(e) => {
+														e.preventDefault();
+														if (!incomeDate || incomeAmount === "" || incomeAmount <= 0) {
+															return;
+														}
+														createIncomeMutation.mutate(rental.id);
+													}}
+													className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end"
+												>
+													<label className="flex flex-col gap-1">
+														<span className="text-xs text-gray-600">Date</span>
+														<input
+															type="date"
+															value={incomeDate}
+															onChange={(e) => setIncomeDate(e.target.value)}
+															required
+															className="border rounded px-2 py-1 text-sm"
+														/>
+													</label>
+													<label className="flex flex-col gap-1">
+														<span className="text-xs text-gray-600">Amount ($)</span>
+														<input
+															type="number"
+															min={0}
+															step="0.01"
+															value={incomeAmount}
+															onChange={(e) => {
+																const v = e.target.value;
+																if (v === "") setIncomeAmount("");
+																else setIncomeAmount(Number(v));
+															}}
+															required
+															className="border rounded px-2 py-1 text-sm"
+															placeholder="0.00"
+														/>
+													</label>
+													<label className="flex flex-col gap-1 md:col-span-2">
+														<span className="text-xs text-gray-600">Description (optional)</span>
+														<input
+															type="text"
+															value={incomeDescription}
+															onChange={(e) => setIncomeDescription(e.target.value)}
+															className="border rounded px-2 py-1 text-sm"
+															placeholder="Income description"
+														/>
+													</label>
+													<div className="md:col-span-2 flex gap-2">
+														<button
+															type="submit"
+															disabled={createIncomeMutation.isPending}
+															className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm px-3 py-2 rounded"
+														>
+															{createIncomeMutation.isPending ? "Saving…" : "Save"}
+														</button>
+														<button
+															type="button"
+															onClick={() => {
+																setShowIncomeForm(null);
+																setIncomeAmount("");
+																setIncomeDate("");
+																setIncomeDescription("");
+															}}
+															className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm px-3 py-2 rounded"
+														>
+															Cancel
+														</button>
+													</div>
+													{createIncomeMutation.isError ? (
+														<div className="md:col-span-6 text-xs text-red-600">Failed to create income transaction.</div>
+													) : null}
+													{createIncomeMutation.isSuccess ? (
+														<div className="md:col-span-6 text-xs text-green-700">Income transaction created.</div>
+													) : null}
+												</form>
+											</div>
 										) : null}
 										{editingRentalId === rental.id ? (
 											<div className="mt-2">

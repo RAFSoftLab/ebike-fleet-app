@@ -34,6 +34,13 @@ export function BatteriesPage() {
 	const [editChargeLevel, setEditChargeLevel] = React.useState<number | "">("");
 	const [editAssignedBikeId, setEditAssignedBikeId] = React.useState<string | "">("");
 
+	// Maintenance record form state
+	const [showMaintenanceForm, setShowMaintenanceForm] = React.useState<string | null>(null);
+	const [maintenanceServiceDate, setMaintenanceServiceDate] = React.useState("");
+	const [maintenanceDescription, setMaintenanceDescription] = React.useState("");
+	const [maintenanceCost, setMaintenanceCost] = React.useState<number | "">("");
+	const [maintenanceNotes, setMaintenanceNotes] = React.useState("");
+
 	const bikesQuery = useQuery<Bike[]>({
 		queryKey: ["bikes"],
 		queryFn: async () => {
@@ -109,6 +116,32 @@ export function BatteriesPage() {
 			setEditingBatteryId(null);
 			queryClient.invalidateQueries({ queryKey: ["batteries"] });
 			queryClient.invalidateQueries({ queryKey: ["bikes"] });
+		},
+	});
+
+	const createMaintenanceMutation = useMutation({
+		mutationFn: async (batteryId: string) => {
+			const payload: any = {
+				battery_id: batteryId,
+				service_date: maintenanceServiceDate,
+				description: maintenanceDescription.trim(),
+				cost: maintenanceCost,
+			};
+			if (maintenanceNotes.trim()) {
+				payload.notes = maintenanceNotes.trim();
+			}
+			const resp = await api.post("/fleet/maintenance", payload);
+			return resp.data;
+		},
+		onSuccess: () => {
+			setShowMaintenanceForm(null);
+			setMaintenanceServiceDate("");
+			setMaintenanceDescription("");
+			setMaintenanceCost("");
+			setMaintenanceNotes("");
+			queryClient.invalidateQueries({ queryKey: ["maintenance"] });
+			queryClient.invalidateQueries({ queryKey: ["financial-analytics"] });
+			queryClient.invalidateQueries({ queryKey: ["batteries"] });
 		},
 	});
 
@@ -221,22 +254,126 @@ export function BatteriesPage() {
 												) : null;
 										  })()
 										: null}
-									{editingBatteryId !== b.id ? (
-										<button
-											type="button"
-											onClick={() => {
-												setEditingBatteryId(b.id);
-												setEditCapacityWh(typeof b.capacity_wh === "number" ? b.capacity_wh : "");
-												setEditChargeLevel(typeof b.charge_level === "number" ? b.charge_level : "");
-												setEditAssignedBikeId(b.assigned_bike_id ?? "");
-											}}
-											className="ml-auto bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded"
-										>
-											Manage
-										</button>
+									{editingBatteryId !== b.id && showMaintenanceForm !== b.id ? (
+										<div className="ml-auto flex gap-2">
+											<button
+												type="button"
+												onClick={() => {
+													setShowMaintenanceForm(b.id);
+													setMaintenanceServiceDate(new Date().toISOString().split("T")[0]);
+												}}
+												className="bg-green-100 hover:bg-green-200 text-green-800 text-xs px-2 py-1 rounded"
+											>
+												Add Maintenance
+											</button>
+											<button
+												type="button"
+												onClick={() => {
+													setEditingBatteryId(b.id);
+													setEditCapacityWh(typeof b.capacity_wh === "number" ? b.capacity_wh : "");
+													setEditChargeLevel(typeof b.charge_level === "number" ? b.charge_level : "");
+													setEditAssignedBikeId(b.assigned_bike_id ?? "");
+												}}
+												className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded"
+											>
+												Manage
+											</button>
+										</div>
+									) : null}
+									{showMaintenanceForm === b.id ? (
+										<div className="w-full mt-2 border-t pt-2">
+											<h4 className="text-xs font-semibold mb-2">Add Maintenance Record</h4>
+											<form
+												onSubmit={(e) => {
+													e.preventDefault();
+													if (!maintenanceServiceDate || !maintenanceDescription.trim() || maintenanceCost === "" || maintenanceCost <= 0) {
+														return;
+													}
+													createMaintenanceMutation.mutate(b.id);
+												}}
+												className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end"
+											>
+												<label className="flex flex-col gap-1">
+													<span className="text-xs text-gray-600">Service Date</span>
+													<input
+														type="date"
+														value={maintenanceServiceDate}
+														onChange={(e) => setMaintenanceServiceDate(e.target.value)}
+														required
+														className="border rounded px-2 py-1 text-sm"
+													/>
+												</label>
+												<label className="flex flex-col gap-1 md:col-span-2">
+													<span className="text-xs text-gray-600">Description</span>
+													<input
+														type="text"
+														value={maintenanceDescription}
+														onChange={(e) => setMaintenanceDescription(e.target.value)}
+														required
+														className="border rounded px-2 py-1 text-sm"
+														placeholder="What was done?"
+													/>
+												</label>
+												<label className="flex flex-col gap-1">
+													<span className="text-xs text-gray-600">Cost ($)</span>
+													<input
+														type="number"
+														min={0}
+														step="0.01"
+														value={maintenanceCost}
+														onChange={(e) => {
+															const v = e.target.value;
+															if (v === "") setMaintenanceCost("");
+															else setMaintenanceCost(Number(v));
+														}}
+														required
+														className="border rounded px-2 py-1 text-sm"
+														placeholder="0.00"
+													/>
+												</label>
+												<label className="flex flex-col gap-1 md:col-span-1">
+													<span className="text-xs text-gray-600">Notes (optional)</span>
+													<input
+														type="text"
+														value={maintenanceNotes}
+														onChange={(e) => setMaintenanceNotes(e.target.value)}
+														className="border rounded px-2 py-1 text-sm"
+														placeholder="Additional notes"
+													/>
+												</label>
+												<div className="md:col-span-1 flex gap-2">
+													<button
+														type="submit"
+														disabled={createMaintenanceMutation.isPending}
+														className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm px-3 py-2 rounded"
+													>
+														{createMaintenanceMutation.isPending ? "Saving…" : "Save"}
+													</button>
+													<button
+														type="button"
+														onClick={() => {
+															setShowMaintenanceForm(null);
+															setMaintenanceServiceDate("");
+															setMaintenanceDescription("");
+															setMaintenanceCost("");
+															setMaintenanceNotes("");
+														}}
+														className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm px-3 py-2 rounded"
+													>
+														Cancel
+													</button>
+												</div>
+												{createMaintenanceMutation.isError ? (
+													<div className="md:col-span-6 text-xs text-red-600">Failed to create maintenance record.</div>
+												) : null}
+												{createMaintenanceMutation.isSuccess ? (
+													<div className="md:col-span-6 text-xs text-green-700">Maintenance record created.</div>
+												) : null}
+											</form>
+										</div>
 									) : null}
 									{editingBatteryId === b.id ? (
-										<div className="w-full mt-2">
+										<div className="w-full mt-2 border-t pt-2">
 											<form
 												onSubmit={(e) => {
 													e.preventDefault();
