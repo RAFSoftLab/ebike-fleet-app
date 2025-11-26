@@ -17,10 +17,11 @@ router = APIRouter()
 
 @router.get("/drivers", response_model=list[auth_schemas.UserProfileWithRoleRead])
 def list_drivers(
+    search: Optional[str] = Query(None, description="Search by name, email, username, or phone"),
     db: Session = Depends(get_db),
     _admin = Depends(security.require_admin),
 ):
-    rows = service.list_driver_profiles(db)
+    rows = service.list_driver_profiles(db, search=search)
     results: list[auth_schemas.UserProfileWithRoleRead] = []
     for user, profile in rows:
         base = auth_schemas.UserProfileRead.model_validate(profile).model_dump()
@@ -76,16 +77,17 @@ def create_bike(
 def list_bikes(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    search: Optional[str] = Query(None, description="Search by serial number, make, model, or status"),
     db: Session = Depends(get_db),
     user = Depends(security.get_current_user),
 ):
     # admins can list all bikes, riders can list their own bikes
     if security.is_admin(user):
-        return service.list_bikes(db, skip=skip, limit=limit)
+        return service.list_bikes(db, skip=skip, limit=limit, search=search)
     profile = db.query(auth_models.UserProfile).filter(auth_models.UserProfile.user_id == user.id).first()
     if not profile:
         return []
-    return service.list_bikes_for_profile(db, profile.id, skip=skip, limit=limit)
+    return service.list_bikes_for_profile(db, profile.id, skip=skip, limit=limit, search=search)
 
 
 @router.get("/bikes/{bike_id}", response_model=schemas.BikeRead)
@@ -156,16 +158,17 @@ def create_battery(
 def list_batteries(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    search: Optional[str] = Query(None, description="Search by serial number, status, or health status"),
     db: Session = Depends(get_db),
     user = Depends(security.get_current_user),
 ):
     # admins can list all batteries, riders can list their own batteries
     if security.is_admin(user):
-        return service.list_batteries(db, skip=skip, limit=limit)
+        return service.list_batteries(db, skip=skip, limit=limit, search=search)
     profile = db.query(auth_models.UserProfile).filter(auth_models.UserProfile.user_id == user.id).first()
     if not profile:
         return []
-    return service.list_batteries_for_profile(db, profile.id, skip=skip, limit=limit)
+    return service.list_batteries_for_profile(db, profile.id, skip=skip, limit=limit, search=search)
 
 
 @router.get("/me/bikes", response_model=list[schemas.BikeWithBatteriesRead])
@@ -250,6 +253,7 @@ def list_rentals(
     profile_id: Optional[UUID] = Query(None, description="Filter by driver profile ID"),
     start_date: Optional[date] = Query(None, description="Filter rentals that overlap with this date or later"),
     end_date: Optional[date] = Query(None, description="Filter rentals that overlap with this date or earlier"),
+    search: Optional[str] = Query(None, description="Search by bike serial number, driver name, or notes"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -274,7 +278,8 @@ def list_rentals(
         start_date=start_date,
         end_date=end_date,
         skip=skip,
-        limit=limit
+        limit=limit,
+        search=search
     )
 
 

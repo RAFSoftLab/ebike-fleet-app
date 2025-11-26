@@ -1,5 +1,5 @@
 import React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api } from "../../shared/api";
 import { useCurrency } from "../../shared/CurrencyContext";
 
@@ -51,6 +51,19 @@ export function RentalsPage() {
 	const [editRentalEndDate, setEditRentalEndDate] = React.useState("");
 	const [editRentalNotes, setEditRentalNotes] = React.useState("");
 
+	// Search state - separate input value from debounced search query
+	const [searchInput, setSearchInput] = React.useState("");
+	const [searchQuery, setSearchQuery] = React.useState("");
+
+	// Debounce search input - reduced to 200ms for more responsive feel
+	React.useEffect(() => {
+		const timer = setTimeout(() => {
+			setSearchQuery(searchInput);
+		}, 200); // 200ms debounce for smoother experience
+
+		return () => clearTimeout(timer);
+	}, [searchInput]);
+
 	// Income transaction form state
 	const { availableCurrencies } = useCurrency();
 	const [showIncomeForm, setShowIncomeForm] = React.useState<string | null>(null);
@@ -76,11 +89,18 @@ export function RentalsPage() {
 	});
 
 	const rentalsQuery = useQuery<Rental[]>({
-		queryKey: ["rentals"],
+		queryKey: ["rentals", searchQuery],
 		queryFn: async () => {
-			const resp = await api.get("/fleet/rentals");
+			const params = new URLSearchParams();
+			if (searchQuery.trim()) {
+				params.append("search", searchQuery.trim());
+			}
+			const resp = await api.get(`/fleet/rentals?${params.toString()}`);
 			return resp.data as Rental[];
 		},
+		refetchOnWindowFocus: false,
+		staleTime: 0,
+		placeholderData: keepPreviousData,
 	});
 
 	const createRentalMutation = useMutation({
@@ -274,7 +294,30 @@ export function RentalsPage() {
 						</div>
 					</section>
 					<section>
-						<h3 className="font-semibold mb-2">All Rentals ({rentalsQuery.data?.length ?? 0})</h3>
+						<div className="flex items-center justify-between mb-2">
+							<h3 className="font-semibold">All Rentals ({rentalsQuery.data?.length ?? 0})</h3>
+							<div className="flex items-center gap-2">
+								<input
+									type="text"
+									value={searchInput}
+									onChange={(e) => setSearchInput(e.target.value)}
+									placeholder="Search rentals..."
+									className="border rounded px-2 py-1 text-sm w-64"
+								/>
+								{searchInput && (
+									<button
+										type="button"
+										onClick={() => {
+											setSearchInput("");
+											setSearchQuery("");
+										}}
+										className="text-gray-500 hover:text-gray-700 text-sm"
+									>
+										Clear
+									</button>
+								)}
+							</div>
+						</div>
 						<div className="border rounded-md divide-y">
 							{(rentalsQuery.data ?? []).map((rental) => {
 								const bike = (bikesQuery.data ?? []).find((b) => b.id === rental.bike_id);

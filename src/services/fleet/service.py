@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import and_, or_, func as sql_func
+from sqlalchemy import and_, or_, func as sql_func, cast, String
 from fastapi import HTTPException, status
 from uuid import UUID
 from . import models, schemas
@@ -33,18 +33,48 @@ def create_bike(db: Session, data: schemas.BikeCreate):
     return bike
 
 
-def list_bikes(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Bike).offset(skip).limit(limit).all()
+def list_bikes(db: Session, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    """
+    List bikes with optional search filter.
+    Searches serial_number, make, model, and status.
+    """
+    query = db.query(models.Bike)
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        query = query.filter(
+            or_(
+                sql_func.lower(models.Bike.serial_number).like(search_term),
+                sql_func.lower(models.Bike.make).like(search_term),
+                sql_func.lower(models.Bike.model).like(search_term),
+                sql_func.lower(cast(models.Bike.status, String)).like(search_term),
+            )
+        )
+    
+    return query.offset(skip).limit(limit).all()
 
 
-def list_bikes_for_profile(db: Session, profile_id: UUID, skip: int = 0, limit: int = 100):
-    return (
+def list_bikes_for_profile(db: Session, profile_id: UUID, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    """
+    List bikes for a specific profile with optional search filter.
+    """
+    query = (
         db.query(models.Bike)
         .filter(models.Bike.assigned_profile_id == profile_id)
-        .offset(skip)
-        .limit(limit)
-        .all()
     )
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        query = query.filter(
+            or_(
+                sql_func.lower(models.Bike.serial_number).like(search_term),
+                sql_func.lower(models.Bike.make).like(search_term),
+                sql_func.lower(models.Bike.model).like(search_term),
+                sql_func.lower(cast(models.Bike.status, String)).like(search_term),
+            )
+        )
+    
+    return query.offset(skip).limit(limit).all()
 
 
 def get_bike(db: Session, bike_id: UUID):
@@ -123,19 +153,47 @@ def create_battery(db: Session, data: schemas.BatteryCreate):
     return battery
 
 
-def list_batteries(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Battery).offset(skip).limit(limit).all()
+def list_batteries(db: Session, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    """
+    List batteries with optional search filter.
+    Searches serial_number, status, and health_status.
+    """
+    query = db.query(models.Battery)
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        query = query.filter(
+            or_(
+                sql_func.lower(models.Battery.serial_number).like(search_term),
+                sql_func.lower(cast(models.Battery.status, String)).like(search_term),
+                sql_func.lower(cast(models.Battery.health_status, String)).like(search_term),
+            )
+        )
+    
+    return query.offset(skip).limit(limit).all()
 
 
-def list_batteries_for_profile(db: Session, profile_id: UUID, skip: int = 0, limit: int = 100):
-    return (
+def list_batteries_for_profile(db: Session, profile_id: UUID, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    """
+    List batteries for a specific profile with optional search filter.
+    """
+    query = (
         db.query(models.Battery)
         .join(models.Bike, models.Battery.assigned_bike_id == models.Bike.id)
         .filter(models.Bike.assigned_profile_id == profile_id)
-        .offset(skip)
-        .limit(limit)
-        .all()
     )
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        query = query.filter(
+            or_(
+                sql_func.lower(models.Battery.serial_number).like(search_term),
+                sql_func.lower(cast(models.Battery.status, String)).like(search_term),
+                sql_func.lower(cast(models.Battery.health_status, String)).like(search_term),
+            )
+        )
+    
+    return query.offset(skip).limit(limit).all()
 
 
 def get_battery(db: Session, battery_id: UUID):
@@ -212,17 +270,31 @@ def unassign_battery_from_bike(db: Session, bike_id: UUID, battery_id: UUID):
     return battery
 
 
-def list_driver_profiles(db: Session) -> List[Tuple[auth_models.User, auth_models.UserProfile]]:
+def list_driver_profiles(db: Session, search: Optional[str] = None) -> List[Tuple[auth_models.User, auth_models.UserProfile]]:
     """
     Return (User, UserProfile) rows for all users with the driver role
     that have an associated profile.
+    Optionally filter by search term (searches first_name, last_name, email, username, phone_number).
     """
-    rows: List[Tuple[auth_models.User, auth_models.UserProfile]] = (
+    query = (
         db.query(auth_models.User, auth_models.UserProfile)
         .join(auth_models.UserProfile, auth_models.UserProfile.user_id == auth_models.User.id)
         .filter(auth_models.User.role == auth_models.RoleEnum.driver)
-        .all()
     )
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        query = query.filter(
+            or_(
+                sql_func.lower(auth_models.UserProfile.first_name).like(search_term),
+                sql_func.lower(auth_models.UserProfile.last_name).like(search_term),
+                sql_func.lower(auth_models.User.email).like(search_term),
+                sql_func.lower(auth_models.User.username).like(search_term),
+                sql_func.lower(auth_models.UserProfile.phone_number).like(search_term),
+            )
+        )
+    
+    rows: List[Tuple[auth_models.User, auth_models.UserProfile]] = query.all()
     return rows
 
 
@@ -322,9 +394,13 @@ def list_rentals(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    search: Optional[str] = None
 ):
-    """List rentals with optional filters."""
+    """
+    List rentals with optional filters.
+    Search filters by bike serial_number, driver name, or notes.
+    """
     query = db.query(models.Rental)
     
     if bike_id:
@@ -343,6 +419,36 @@ def list_rentals(
     
     if end_date:
         query = query.filter(models.Rental.start_date <= end_date)
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        # Find matching bike IDs
+        matching_bike_ids = [
+            bike.id for bike in db.query(models.Bike.id).filter(
+                sql_func.lower(models.Bike.serial_number).like(search_term)
+            ).all()
+        ]
+        
+        # Find matching profile IDs
+        matching_profile_ids = [
+            profile.id for profile in db.query(auth_models.UserProfile.id).join(
+                auth_models.User, auth_models.UserProfile.user_id == auth_models.User.id
+            ).filter(
+                or_(
+                    sql_func.lower(auth_models.UserProfile.first_name).like(search_term),
+                    sql_func.lower(auth_models.UserProfile.last_name).like(search_term),
+                )
+            ).all()
+        ]
+        
+        # Filter rentals by matching bike IDs, profile IDs, or notes
+        search_filters = [sql_func.lower(models.Rental.notes).like(search_term)]
+        if matching_bike_ids:
+            search_filters.append(models.Rental.bike_id.in_(matching_bike_ids))
+        if matching_profile_ids:
+            search_filters.append(models.Rental.profile_id.in_(matching_profile_ids))
+        
+        query = query.filter(or_(*search_filters))
     
     return query.order_by(models.Rental.start_date.desc()).offset(skip).limit(limit).all()
 

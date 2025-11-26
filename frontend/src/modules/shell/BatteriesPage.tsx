@@ -1,5 +1,5 @@
 import React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api } from "../../shared/api";
 import { useCurrency } from "../../shared/CurrencyContext";
 
@@ -30,6 +30,19 @@ export function BatteriesPage() {
 	const [batteryCapacityWh, setBatteryCapacityWh] = React.useState<number | "">("");
 	const [batteryChargeLevel, setBatteryChargeLevel] = React.useState<number | "">("");
 
+	// Search state - separate input value from debounced search query
+	const [searchInput, setSearchInput] = React.useState("");
+	const [searchQuery, setSearchQuery] = React.useState("");
+
+	// Debounce search input - reduced to 200ms for more responsive feel
+	React.useEffect(() => {
+		const timer = setTimeout(() => {
+			setSearchQuery(searchInput);
+		}, 200); // 200ms debounce for smoother experience
+
+		return () => clearTimeout(timer);
+	}, [searchInput]);
+
 	// Manage battery inline edit state
 	const [editingBatteryId, setEditingBatteryId] = React.useState<string | null>(null);
 	const [editCapacityWh, setEditCapacityWh] = React.useState<number | "">("");
@@ -54,11 +67,18 @@ export function BatteriesPage() {
 	});
 
 	const batteriesQuery = useQuery<Battery[]>({
-		queryKey: ["batteries"],
+		queryKey: ["batteries", searchQuery],
 		queryFn: async () => {
-			const resp = await api.get("/fleet/batteries");
+			const params = new URLSearchParams();
+			if (searchQuery.trim()) {
+				params.append("search", searchQuery.trim());
+			}
+			const resp = await api.get(`/fleet/batteries?${params.toString()}`);
 			return resp.data as Battery[];
 		},
+		refetchOnWindowFocus: false,
+		staleTime: 0,
+		placeholderData: keepPreviousData,
 	});
 
 	const createBatteryMutation = useMutation({
@@ -241,7 +261,30 @@ export function BatteriesPage() {
 						</div>
 					</section>
 					<section>
-						<h3 className="font-semibold mb-2">All Batteries ({batteriesQuery.data?.length ?? 0})</h3>
+						<div className="flex items-center justify-between mb-2">
+							<h3 className="font-semibold">All Batteries ({batteriesQuery.data?.length ?? 0})</h3>
+							<div className="flex items-center gap-2">
+								<input
+									type="text"
+									value={searchInput}
+									onChange={(e) => setSearchInput(e.target.value)}
+									placeholder="Search batteries..."
+									className="border rounded px-2 py-1 text-sm w-64"
+								/>
+								{searchInput && (
+									<button
+										type="button"
+										onClick={() => {
+											setSearchInput("");
+											setSearchQuery("");
+										}}
+										className="text-gray-500 hover:text-gray-700 text-sm"
+									>
+										Clear
+									</button>
+								)}
+							</div>
+						</div>
 						<div className="border rounded-md divide-y">
 							{(batteriesQuery.data ?? []).map((b) => (
 								<div key={b.id} className="px-3 py-2 text-sm flex items-center gap-3">
