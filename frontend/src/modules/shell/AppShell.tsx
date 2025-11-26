@@ -31,18 +31,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link to="/" className="hover:underline">
               Dashboard
             </Link>
-            <Link to="/drivers" className="hover:underline">
-              Drivers
-            </Link>
-            <Link to="/bikes" className="hover:underline">
-              Bikes
-            </Link>
-            <Link to="/batteries" className="hover:underline">
-              Batteries
-            </Link>
-            <Link to="/rentals" className="hover:underline">
-              Rentals
-            </Link>
           </nav>
           <div className="ml-auto flex items-center gap-4">
             {isAdmin && (

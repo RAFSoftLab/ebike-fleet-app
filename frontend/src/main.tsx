@@ -12,6 +12,7 @@ import { DriversPage } from "./modules/shell/DriversPage";
 import { BikesPage } from "./modules/shell/BikesPage";
 import { BatteriesPage } from "./modules/shell/BatteriesPage";
 import { RentalsPage } from "./modules/shell/RentalsPage";
+import { useCurrentUser } from "./modules/users/useCurrentUser";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +37,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const currentUserQuery = useCurrentUser();
+  
+  if (currentUserQuery.isLoading) {
+    return <p className="text-sm text-gray-600">Loading…</p>;
+  }
+  
+  if (currentUserQuery.isError || !currentUserQuery.data) {
+    return <p className="text-sm text-red-600">Unable to load user.</p>;
+  }
+  
+  if (currentUserQuery.data.role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
+  
+  return <>{children}</>;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
@@ -51,10 +70,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                     <AppShell>
                       <Routes>
                         <Route index element={<Dashboard />} />
-                        <Route path="drivers" element={<DriversPage />} />
-                        <Route path="bikes" element={<BikesPage />} />
-                        <Route path="batteries" element={<BatteriesPage />} />
-                        <Route path="rentals" element={<RentalsPage />} />
+                        <Route path="drivers" element={<AdminRoute><DriversPage /></AdminRoute>} />
+                        <Route path="bikes" element={<AdminRoute><BikesPage /></AdminRoute>} />
+                        <Route path="batteries" element={<AdminRoute><BatteriesPage /></AdminRoute>} />
+                        <Route path="rentals" element={<AdminRoute><RentalsPage /></AdminRoute>} />
                       </Routes>
                     </AppShell>
                   </ProtectedRoute>
