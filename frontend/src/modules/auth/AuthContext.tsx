@@ -1,4 +1,5 @@
 import React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, setAccessToken as setApiAccessToken } from "../../shared/api";
 
 type AuthContextValue = {
@@ -14,6 +15,7 @@ const AuthContext = React.createContext<AuthContextValue | undefined>(undefined)
 const ACCESS_TOKEN_KEY = "access_token";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [accessToken, setAccessToken] = React.useState<string | null>(() => {
     return localStorage.getItem(ACCESS_TOKEN_KEY);
   });
@@ -31,6 +33,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (identifier: string, password: string) => {
     const resp = await api.post("/auth/login", { identifier, password });
     persistToken(resp.data.access_token);
+    // Invalidate all queries to force refetch with the new user's token
+    // This ensures the UI updates immediately with the new user's data
+    queryClient.invalidateQueries();
   };
 
   const logout = async () => {
@@ -40,6 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // no-op
     } finally {
       persistToken(null);
+      // Clear all cached queries when logging out
+      queryClient.clear();
     }
   };
 

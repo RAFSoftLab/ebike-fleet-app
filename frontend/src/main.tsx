@@ -12,6 +12,7 @@ import { DriversPage } from "./modules/shell/DriversPage";
 import { BikesPage } from "./modules/shell/BikesPage";
 import { BatteriesPage } from "./modules/shell/BatteriesPage";
 import { RentalsPage } from "./modules/shell/RentalsPage";
+import { ProfilePage } from "./modules/shell/ProfilePage";
 import { useCurrentUser } from "./modules/users/useCurrentUser";
 
 const queryClient = new QueryClient({
@@ -70,6 +71,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                     <AppShell>
                       <Routes>
                         <Route index element={<Dashboard />} />
+                        <Route path="profile" element={<ProfilePage />} />
                         <Route path="drivers" element={<AdminRoute><DriversPage /></AdminRoute>} />
                         <Route path="bikes" element={<AdminRoute><BikesPage /></AdminRoute>} />
                         <Route path="batteries" element={<AdminRoute><BatteriesPage /></AdminRoute>} />
