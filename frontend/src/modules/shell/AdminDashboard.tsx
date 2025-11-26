@@ -2,6 +2,7 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api";
 import { useCurrency } from "../../shared/CurrencyContext";
+import { exportAdminDashboardToPDF, AdminDashboardData } from "../../shared/pdfExport";
 
 export function AdminDashboard() {
 	const { formatCurrency, convertAmount, currency: displayCurrency } = useCurrency();
@@ -129,9 +130,72 @@ export function AdminDashboard() {
 	const incomeCount = financialAnalytics?.summary?.income_count ?? 0;
 	const expenseCount = financialAnalytics?.summary?.expense_count ?? 0;
 
+	const handleExportPDF = async () => {
+		// Convert all transactions for PDF (not just first 10)
+		const allConvertedTransactions: Record<string, number | null> = {};
+		if (financialAnalytics?.transactions) {
+			await Promise.all(
+				financialAnalytics.transactions.slice(0, 20).map(async (tx: any) => {
+					if (tx.currency === displayCurrency) {
+						allConvertedTransactions[tx.id] = parseFloat(tx.amount);
+					} else {
+						const converted = await convertAmount(
+							tx.amount,
+							tx.currency || "RSD",
+							tx.transaction_date
+						);
+						allConvertedTransactions[tx.id] = converted;
+					}
+				})
+			);
+		}
+
+		// Convert all maintenance records for PDF (not just first 10)
+		const allConvertedMaintenance: Record<string, number | null> = {};
+		if (maintenanceRecords && maintenanceRecords.length > 0) {
+			await Promise.all(
+				maintenanceRecords.slice(0, 20).map(async (record: any) => {
+					if (record.currency === displayCurrency) {
+						allConvertedMaintenance[record.id] = parseFloat(record.cost);
+					} else {
+						const converted = await convertAmount(
+							record.cost,
+							record.currency || "RSD",
+							record.service_date
+						);
+						allConvertedMaintenance[record.id] = converted;
+					}
+				})
+			);
+		}
+
+		const pdfData: AdminDashboardData = {
+			bikes,
+			batteries,
+			drivers,
+			rentals,
+			financialAnalytics,
+			maintenanceRecords,
+			convertedTransactions: allConvertedTransactions,
+			convertedMaintenance: allConvertedMaintenance,
+			formatCurrency,
+		};
+
+		exportAdminDashboardToPDF(pdfData);
+	};
+
 	return (
 		<div className="space-y-6">
-			<h2 className="text-lg font-semibold">Dashboard</h2>
+			<div className="flex items-center justify-between">
+				<h2 className="text-lg font-semibold">Dashboard</h2>
+				<button
+					onClick={handleExportPDF}
+					disabled={isLoading}
+					className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+				>
+					Export PDF
+				</button>
+			</div>
 			{isLoading ? (
 				<p className="text-sm text-gray-600">Loading data…</p>
 			) : isError ? (

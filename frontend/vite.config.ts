@@ -6,6 +6,9 @@ export default defineConfig(({ mode }) => {
   const target = env.VITE_API_PROXY_TARGET || "http://localhost:8000";
   return {
     plugins: [react()],
+    optimizeDeps: {
+      include: ['jspdf'],
+    },
     server: {
       host: true,
       port: 5173,

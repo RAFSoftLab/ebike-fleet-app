@@ -1,6 +1,7 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api";
+import { exportDriverDashboardToPDF, DriverDashboardData } from "../../shared/pdfExport";
 
 type Battery = {
 	id: string;
@@ -57,9 +58,26 @@ export function DriverDashboard() {
 	const bikes = myBikesQuery.data ?? [];
 	const rentals = myRentalsQuery.data ?? [];
 
+	const handleExportPDF = () => {
+		const pdfData: DriverDashboardData = {
+			bikes,
+			rentals,
+		};
+		exportDriverDashboardToPDF(pdfData);
+	};
+
 	return (
 		<div className="space-y-6">
-			<h2 className="text-lg font-semibold">My dashboard</h2>
+			<div className="flex items-center justify-between">
+				<h2 className="text-lg font-semibold">My dashboard</h2>
+				<button
+					onClick={handleExportPDF}
+					disabled={isLoading}
+					className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+				>
+					Export PDF
+				</button>
+			</div>
 			{isLoading ? (
 				<p className="text-sm text-gray-600">Loading data…</p>
 			) : isError ? (
