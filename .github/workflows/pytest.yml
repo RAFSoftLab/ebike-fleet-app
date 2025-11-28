@@ -10,6 +10,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
+    env:
+      database_url: postgresql+psycopg2://postgres:postgres@localhost:5432/ebike_db
+      jwt_secret: testsecret
+      jwt_algorithm: HS256
+      admin_emails_csv: admin@example.com
+      TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/ebike_db
+      TEST_JWT_SECRET: testsecret
+      TEST_JWT_ALG: HS256
+      TEST_ADMIN_EMAILS: admin@example.com
+      PYTHONPATH: ${{ github.workspace }}/src
+    
     services:
       postgres:
         image: postgres:15
@@ -41,8 +52,6 @@ jobs:
         pip install -r requirements.txt
     
     - name: Wait for PostgreSQL
-      env:
-        TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/ebike_db
       run: |
         python -c "
         import time
@@ -59,12 +68,6 @@ jobs:
         "
     
     - name: Run pytest
-      env:
-        TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/ebike_db
-        TEST_JWT_SECRET: testsecret
-        TEST_JWT_ALG: HS256
-        TEST_ADMIN_EMAILS: admin@example.com
-        PYTHONPATH: ${{ github.workspace }}/src
       run: |
         pytest -v --tb=short
 
