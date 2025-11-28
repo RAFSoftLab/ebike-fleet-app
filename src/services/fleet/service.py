@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from uuid import UUID
 from . import models, schemas
 from . import exchange_rate_service
+from .notification_service import get_notification_service, NotificationType
 from typing import List, Tuple, Optional
 from datetime import date
 from services.authentication import models as auth_models
@@ -384,6 +385,32 @@ def create_rental(db: Session, data: schemas.RentalCreate):
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Error creating rental")
     db.refresh(rental)
+    
+    # Send notification
+    try:
+        notification_service = get_notification_service()
+        user = db.query(auth_models.User).filter(auth_models.User.id == profile.user_id).first()
+        if user:
+            recipient = user.email or user.username
+            subject = f"Bike Rental Confirmed - {bike.serial_number}"
+            message = (
+                f"Your rental for bike {bike.serial_number} ({bike.make} {bike.model}) "
+                f"has been confirmed. Start date: {data.start_date}"
+            )
+            if data.end_date:
+                message += f", End date: {data.end_date}"
+            notification_service.notify(
+                recipient=recipient,
+                subject=subject,
+                message=message,
+                notification_type=NotificationType.BIKE_RENTED,
+                strategy_name="Email"  # Use Email strategy
+            )
+    except Exception as e:
+        # Don't fail the rental creation if notification fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send rental notification: {e}")
+    
     return rental
 
 
@@ -563,6 +590,37 @@ def create_maintenance_record(db: Session, data: schemas.MaintenanceRecordCreate
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Error creating maintenance record")
     
     db.refresh(maintenance_record)
+    
+    # Send notification
+    try:
+        notification_service = get_notification_service()
+        # Notify admin about maintenance completion
+        # In a real app, we'd get admin emails from the database
+        admin_users = db.query(auth_models.User).filter(
+            auth_models.User.role == auth_models.RoleEnum.admin
+        ).all()
+        
+        subject = "Maintenance Record Created"
+        if data.bike_id:
+            message = f"Maintenance completed for bike {bike.serial_number}: {data.description}"
+        else:
+            message = f"Maintenance completed for battery {battery.serial_number}: {data.description}"
+        message += f"\nCost: {data.cost} {data.currency or 'RSD'}"
+        
+        for admin in admin_users:
+            recipient = admin.email or admin.username
+            notification_service.notify(
+                recipient=recipient,
+                subject=subject,
+                message=message,
+                notification_type=NotificationType.MAINTENANCE_COMPLETED,
+                strategy_name="In-App"  # Use In-App strategy for admin notifications
+            )
+    except Exception as e:
+        # Don't fail the maintenance record creation if notification fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send maintenance notification: {e}")
+    
     return maintenance_record
 
 
