@@ -119,6 +119,9 @@ if [ -d /etc/nginx/sites-available ]; then
     sed -e "s#__LISTEN_PORT__#$LISTEN_PORT#g" -e "s#__APP_DIR__#$APP_DIR#g" \
         "$SCRIPT_DIR/nginx-ebike.conf" > "$NGINX_SITE"
     ln -sf "$NGINX_SITE" /etc/nginx/sites-enabled/ebike
+    # Disable nginx's stock default site: it binds :80, which is often already
+    # taken (e.g. by Apache) and would stop nginx from starting. This only
+    # removes the symlink; the file stays in sites-available (reversible).
     rm -f /etc/nginx/sites-enabled/default
 else
     NGINX_SITE=/etc/nginx/conf.d/ebike.conf
@@ -132,9 +135,25 @@ if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" != "Disabled" ]; t
     setsebool -P httpd_can_network_connect 1 || warn "Could not set SELinux httpd_can_network_connect"
 fi
 
+# Validate config, then start gently. A hard `restart` is avoided so we don't
+# disrupt any other web server already running on this shared host.
 nginx -t
-systemctl enable nginx
-systemctl restart nginx
+systemctl enable nginx >/dev/null 2>&1 || true
+if systemctl is-active --quiet nginx; then
+    log "nginx already running — reloading to pick up the new site."
+    systemctl reload nginx
+else
+    log "Starting nginx..."
+    systemctl start nginx
+fi
+
+# Confirm our port actually came up (catches a port clash or a bind failure).
+sleep 1
+if ss -ltn | awk '{print $4}' | grep -qE "[:.]${LISTEN_PORT}\$"; then
+    log "nginx is listening on port $LISTEN_PORT."
+else
+    warn "nginx does NOT appear to be listening on $LISTEN_PORT. Check: journalctl -u nginx -e"
+fi
 
 # --- Done ------------------------------------------------------------------
 SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
