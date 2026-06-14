@@ -69,13 +69,15 @@ if [ "$PKG" = apt ]; then
     apt-get update -y || warn "apt-get update had errors (likely unrelated third-party repos) — continuing."
     apt-get install -y python3 python3-venv python3-dev build-essential libpq-dev \
         nginx postgresql postgresql-contrib curl ca-certificates
-    # Node 18+ is needed to build the frontend. Reuse an existing one if new enough.
+    # Node 18+ is needed to BUILD the frontend. If a prebuilt frontend/dist is
+    # already committed, we don't need Node at all — skip the install entirely
+    # (useful on locked-down hosts with broken repos / no recent Node).
     NODE_OK=0
-    if command -v node >/dev/null 2>&1; then
+    if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
         NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
         [ "${NODE_MAJOR:-0}" -ge 18 ] && NODE_OK=1 && log "Reusing existing Node $(node -v)."
     fi
-    if [ "$NODE_OK" -ne 1 ]; then
+    if [ "$NODE_OK" -ne 1 ] && [ ! -f "$APP_DIR/frontend/dist/index.html" ]; then
         log "Installing Node.js 20 via NodeSource..."
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || warn "NodeSource setup reported errors."
         apt-get install -y nodejs || warn "Could not install nodejs from NodeSource."
@@ -111,13 +113,25 @@ log "Running Alembic migrations..."
 sudo -u "$RUN_USER" bash -c "cd '$APP_DIR' && set -a && source .env && set +a && \
     PYTHONPATH='$APP_DIR/src' '$APP_DIR/.venv/bin/alembic' upgrade head"
 
-# --- Build the frontend ----------------------------------------------------
-command -v node >/dev/null 2>&1 || die "Node.js 18+ is required to build the frontend but isn't available.
-   Install it manually (e.g. via nvm) and re-run, or build frontend/dist on another
-   machine and copy it to $APP_DIR/frontend/dist, then re-run."
-log "Building the React frontend with $(node -v)..."
-sudo -u "$RUN_USER" bash -c "cd '$APP_DIR/frontend' && (npm ci || npm install) && npm run build"
-[ -f "$APP_DIR/frontend/dist/index.html" ] || die "Frontend build did not produce frontend/dist/index.html"
+# --- Build the frontend (or use a committed prebuilt dist) ------------------
+# Prefer building from source when a usable Node 18+/npm is present. Otherwise
+# fall back to a prebuilt frontend/dist shipped in the repo (built elsewhere).
+CAN_BUILD=0
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+    [ "${NODE_MAJOR:-0}" -ge 18 ] && CAN_BUILD=1
+fi
+if [ "$CAN_BUILD" -eq 1 ]; then
+    log "Building the React frontend with $(node -v)..."
+    sudo -u "$RUN_USER" bash -c "cd '$APP_DIR/frontend' && (npm ci || npm install) && npm run build"
+elif [ -f "$APP_DIR/frontend/dist/index.html" ]; then
+    log "No Node 18+/npm on this host — using the prebuilt frontend/dist from the repo."
+else
+    die "Cannot build the frontend: no Node 18+/npm available and no prebuilt frontend/dist found.
+   Either install Node 18+ and re-run, or build 'frontend/dist' on another machine,
+   copy it to $APP_DIR/frontend/dist, and re-run."
+fi
+[ -f "$APP_DIR/frontend/dist/index.html" ] || die "frontend/dist/index.html is missing after the build step."
 
 # --- Render & install systemd unit -----------------------------------------
 log "Installing systemd service '$SERVICE_NAME'..."
