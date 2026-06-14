@@ -101,8 +101,10 @@ sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB
 # --- Python venv + dependencies (as the app user) --------------------------
 log "Creating venv and installing Python dependencies..."
 sudo -u "$RUN_USER" python3 -m venv "$APP_DIR/.venv"
-sudo -u "$RUN_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip
-sudo -u "$RUN_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+# --retries/--timeout make pip resilient on slow or flaky connections.
+PIP_NET="--retries 10 --timeout 120"
+sudo -u "$RUN_USER" "$APP_DIR/.venv/bin/pip" install $PIP_NET --upgrade pip
+sudo -u "$RUN_USER" "$APP_DIR/.venv/bin/pip" install $PIP_NET -r "$APP_DIR/requirements.txt"
 
 # --- Database migrations ---------------------------------------------------
 log "Running Alembic migrations..."
