@@ -1,0 +1,32 @@
+[Unit]
+Description=eBike Fleet Management API (FastAPI/gunicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=exec
+# __APP_DIR__ / __RUN_USER__ are filled in by deploy.sh from the directory you
+# cloned into and the user running the install. Edit by hand only if needed.
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+Environment=PYTHONPATH=__APP_DIR__/src
+User=__RUN_USER__
+
+# Bind to localhost only; nginx is the public-facing entry point.
+ExecStart=__APP_DIR__/.venv/bin/gunicorn api_gateway.main:app \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --workers 3 \
+    --bind 127.0.0.1:8000 \
+    --timeout 60 \
+    --access-logfile - \
+    --error-logfile -
+
+Restart=always
+RestartSec=3
+
+# Light hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

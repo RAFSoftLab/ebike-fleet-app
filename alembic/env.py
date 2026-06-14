@@ -16,6 +16,13 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Override the DB URL from the environment so the same code works in dev, CI,
+# and production. The value in alembic.ini is only a fallback. ('%' is escaped
+# because ConfigParser performs interpolation on this value.)
+_env_db_url = os.environ.get("DATABASE_URL")
+if _env_db_url:
+    config.set_main_option("sqlalchemy.url", _env_db_url.replace("%", "%%"))
+
 # Ensure the src directory is on sys.path
 SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 if SRC_DIR not in sys.path:
