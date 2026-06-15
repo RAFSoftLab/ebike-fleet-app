@@ -113,9 +113,11 @@ log "Running Alembic migrations..."
 sudo -u "$RUN_USER" bash -c "cd '$APP_DIR' && set -a && source .env && set +a && \
     PYTHONPATH='$APP_DIR/src' '$APP_DIR/.venv/bin/alembic' upgrade head"
 
-# --- Build the frontend (or use a committed prebuilt dist) ------------------
-# Prefer building from source when a usable Node 18+/npm is present. Otherwise
-# fall back to a prebuilt frontend/dist shipped in the repo (built elsewhere).
+# --- Obtain the built frontend ---------------------------------------------
+# Priority: (1) build from source if Node 18+ is here; (2) download the CI-built
+# artifact published to the GitHub release (works on hosts that can't build,
+# like this one — server only needs OUTBOUND internet); (3) fall back to a
+# prebuilt dist already on disk.
 CAN_BUILD=0
 if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
     NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
@@ -124,14 +126,27 @@ fi
 if [ "$CAN_BUILD" -eq 1 ]; then
     log "Building the React frontend with $(node -v)..."
     sudo -u "$RUN_USER" bash -c "cd '$APP_DIR/frontend' && (npm ci || npm install) && npm run build"
-elif [ -f "$APP_DIR/frontend/dist/index.html" ]; then
-    log "No Node 18+/npm on this host — using the prebuilt frontend/dist from the repo."
 else
-    die "Cannot build the frontend: no Node 18+/npm available and no prebuilt frontend/dist found.
-   Either install Node 18+ and re-run, or build 'frontend/dist' on another machine,
-   copy it to $APP_DIR/frontend/dist, and re-run."
+    # Derive OWNER/REPO from the git remote so the URL isn't hardcoded.
+    ORIGIN_URL="$(sudo -u "$RUN_USER" git -C "$APP_DIR" remote get-url origin 2>/dev/null || true)"
+    REPO_SLUG="$(echo "$ORIGIN_URL" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
+    FRONTEND_DIST_URL="${FRONTEND_DIST_URL:-https://github.com/$REPO_SLUG/releases/download/frontend-latest/frontend-dist.tar.gz}"
+    log "No Node 18+ here — downloading CI-built frontend from $FRONTEND_DIST_URL"
+    if curl -fSL "$FRONTEND_DIST_URL" -o /tmp/frontend-dist.tar.gz; then
+        rm -rf "$APP_DIR/frontend/dist"
+        mkdir -p "$APP_DIR/frontend/dist"
+        tar -xzf /tmp/frontend-dist.tar.gz -C "$APP_DIR/frontend/dist"
+        rm -f /tmp/frontend-dist.tar.gz
+    elif [ -f "$APP_DIR/frontend/dist/index.html" ]; then
+        warn "Could not download the CI artifact — using the existing frontend/dist on disk."
+    else
+        die "Cannot obtain the frontend: no Node 18+ to build, the CI artifact download failed,
+   and no frontend/dist on disk. Check that the 'Build Frontend' GitHub Action has run
+   (it publishes the 'frontend-latest' release), then re-run. URL tried:
+   $FRONTEND_DIST_URL"
+    fi
 fi
-[ -f "$APP_DIR/frontend/dist/index.html" ] || die "frontend/dist/index.html is missing after the build step."
+[ -f "$APP_DIR/frontend/dist/index.html" ] || die "frontend/dist/index.html is missing after the frontend step."
 
 # --- Publish the SPA to a system web root ----------------------------------
 # nginx (www-data) cannot traverse into /home/<user>, so serving the build

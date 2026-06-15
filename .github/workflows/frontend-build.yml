@@ -1,0 +1,54 @@
+name: Build Frontend
+
+# Builds the React SPA in CI and publishes the compiled output as a release
+# asset. The deploy server (which is VPN-only and can't receive inbound
+# connections) downloads this artifact during deploy.sh — CI never connects to
+# the server. The server only needs outbound internet.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required to create/update the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Package dist
+        working-directory: frontend
+        run: tar -czf frontend-dist.tar.gz -C dist .
+
+      # A single rolling "frontend-latest" prerelease whose asset is replaced on
+      # every build. Public repo → the asset has a stable, unauthenticated URL:
+      # https://github.com/RAFSoftLab/ebike-fleet-app/releases/download/frontend-latest/frontend-dist.tar.gz
+      - name: Publish rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: frontend-latest
+          name: Frontend build (latest)
+          prerelease: true
+          files: frontend/frontend-dist.tar.gz
