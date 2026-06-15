@@ -133,6 +133,17 @@ else
 fi
 [ -f "$APP_DIR/frontend/dist/index.html" ] || die "frontend/dist/index.html is missing after the build step."
 
+# --- Publish the SPA to a system web root ----------------------------------
+# nginx (www-data) cannot traverse into /home/<user>, so serving the build
+# straight from the repo fails with "Permission denied". Copy it to a
+# root-owned, world-readable web root instead.
+WEBROOT=/var/www/ebike
+log "Publishing frontend to $WEBROOT ..."
+rm -rf "$WEBROOT"
+mkdir -p "$WEBROOT"
+cp -r "$APP_DIR/frontend/dist/." "$WEBROOT/"
+chmod -R a+rX "$WEBROOT"
+
 # --- Render & install systemd unit -----------------------------------------
 log "Installing systemd service '$SERVICE_NAME'..."
 sed -e "s#__APP_DIR__#$APP_DIR#g" -e "s#__RUN_USER__#$RUN_USER#g" \
@@ -145,7 +156,7 @@ systemctl restart "$SERVICE_NAME"
 log "Configuring nginx on port $LISTEN_PORT..."
 if [ -d /etc/nginx/sites-available ]; then
     NGINX_SITE=/etc/nginx/sites-available/ebike
-    sed -e "s#__LISTEN_PORT__#$LISTEN_PORT#g" -e "s#__APP_DIR__#$APP_DIR#g" \
+    sed -e "s#__LISTEN_PORT__#$LISTEN_PORT#g" -e "s#__WEBROOT__#$WEBROOT#g" \
         "$SCRIPT_DIR/nginx-ebike.conf" > "$NGINX_SITE"
     ln -sf "$NGINX_SITE" /etc/nginx/sites-enabled/ebike
     # Disable nginx's stock default site: it binds :80, which is often already
@@ -154,12 +165,11 @@ if [ -d /etc/nginx/sites-available ]; then
     rm -f /etc/nginx/sites-enabled/default
 else
     NGINX_SITE=/etc/nginx/conf.d/ebike.conf
-    sed -e "s#__LISTEN_PORT__#$LISTEN_PORT#g" -e "s#__APP_DIR__#$APP_DIR#g" \
+    sed -e "s#__LISTEN_PORT__#$LISTEN_PORT#g" -e "s#__WEBROOT__#$WEBROOT#g" \
         "$SCRIPT_DIR/nginx-ebike.conf" > "$NGINX_SITE"
 fi
 
-# nginx (and SELinux on RHEL) must be able to read the app dir / proxy out.
-chmod o+x "$APP_DIR" "$APP_DIR/frontend" 2>/dev/null || true
+# On RHEL/SELinux, allow nginx to reverse-proxy to the backend.
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" != "Disabled" ]; then
     setsebool -P httpd_can_network_connect 1 || warn "Could not set SELinux httpd_can_network_connect"
 fi
