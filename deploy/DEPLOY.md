@@ -53,11 +53,25 @@ Then open `http://SERVER_IP:8080`.
 3. Creates the Postgres role + database (idempotent).
 4. Creates the Python venv, installs `requirements.txt`.
 5. Runs `alembic upgrade head` (creates the schema).
-6. Builds the frontend (`npm ci && npm run build`).
-7. Installs + starts the `ebike-api` systemd unit (gunicorn on `127.0.0.1:8000`).
-8. Renders the nginx site on your chosen port and reloads nginx.
+6. Obtains the built frontend: builds it locally if Node 18+ is present, otherwise
+   **downloads the CI-built artifact** from the `frontend-latest` GitHub release.
+7. Publishes the SPA to `/var/www/ebike` (a web root nginx can read — serving from a
+   home directory fails because nginx can't traverse into `/home/<user>`).
+8. Installs + starts the `ebike-api` systemd unit (gunicorn on `127.0.0.1:8000`).
+9. Renders the nginx site on your chosen port and reloads nginx.
 
 The script is **re-runnable** — run it again after `git pull` to redeploy.
+
+## Frontend builds (CI)
+The React SPA is built by GitHub Actions (`.github/workflows/frontend-build.yml`), not
+on the server (which has an old Node and can't build). On every push that touches
+`frontend/**`, CI builds it and publishes `frontend-dist.tar.gz` to a rolling
+`frontend-latest` release. `deploy.sh` downloads that asset. The server only needs
+**outbound** internet — CI never connects to the VPN-only server.
+
+To ship a frontend change: push to `main` → wait for the **Build Frontend** action to
+finish → on the server `git pull && sudo LISTEN_PORT=8080 bash deploy/deploy.sh`
+(re-running re-downloads the latest artifact). Backend-only changes don't need CI.
 
 ## Operating it
 
