@@ -51,13 +51,20 @@ elif command -v dnf >/dev/null 2>&1; then PKG=dnf
 else die "No supported package manager (apt/dnf) found."; fi
 log "Package manager: $PKG"
 
-# --- Verify chosen port is free --------------------------------------------
+# --- Verify chosen port is free (or already ours) --------------------------
 if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${LISTEN_PORT}\$"; then
-    die "Port $LISTEN_PORT is already in use. Pick a free one:
-       ss -ltn | awk '{print \$4}'    # lists ports in use
+    # In use is fine on a re-run if it's OUR nginx already serving this port.
+    if ss -ltnp 2>/dev/null | grep -E "[:.]${LISTEN_PORT}([^0-9]|$)" | grep -q nginx; then
+        log "Port $LISTEN_PORT is already served by nginx (this app, prior run) — will reconfigure."
+    else
+        die "Port $LISTEN_PORT is in use by another service. Pick a free one:
+       sudo ss -ltnp | grep ':${LISTEN_PORT} '   # see what holds it
+       ss -ltn | awk '{print \$4}'               # list ports in use
    then re-run with:  sudo LISTEN_PORT=<free_port> bash deploy/deploy.sh"
+    fi
+else
+    log "Port $LISTEN_PORT is free."
 fi
-log "Port $LISTEN_PORT is free."
 
 # --- Install system dependencies -------------------------------------------
 log "Installing system packages (python, nginx, postgres, node)..."
